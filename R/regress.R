@@ -69,6 +69,16 @@ besd_regress <- function(x,
     y_type <- "binary"
   }
   
+  # Check that every predictor varies globally (across the full dataset before any
+  # country subsetting). A predictor that is constant everywhere will either be 
+  # silently dropped by the model fitter or produce an error in model fitting.
+  all_preds <- if (is.list(predictors)) {
+    unique(c(predictors$common %||% character(0), predictors$context %||% character(0)))
+  } else {
+    as.character(predictors)
+  }
+  .check_predictor_variance(df, all_preds)
+  
   # Route to scope-specific handler
   if (scope == "by_country") {
     predictors <- as.character(predictors)
@@ -499,6 +509,35 @@ besd_regress <- function(x,
 # Return TRUE for labels that are catch-all / residual categories
 .is_catchall <- function(x, rule = "mode", leves = NULL) {
   grepl(.PICK_REF_AVOID_RE, .strip_non_alpnum(x))
+}
+
+# Check whether predictor has same non-NA value for all entries
+.check_predictor_variance <- function(df, preds) {
+  if (!length(preds)) return(invisible(NULL))
+  
+  invariant <- vapply(preds, function(p) {
+    if (!p %in% names(df)) return(FALSE)   # missing cols caught elsewhere
+    v <- df[[p]]
+    v <- v[!is.na(v)]
+    if (!length(v)) return(TRUE)           # all-NA = effectively constant
+    n_unique <- if (is.factor(v)) nlevels(droplevels(v)) else length(unique(v))
+    n_unique < 2L
+  }, logical(1))
+  
+  bad <- preds[invariant]
+  if (!length(bad)) return(invisible(NULL))
+  
+  .stopf(
+    paste0(
+      "The following predictor%s %s constant (only one unique non-NA value) ",
+      "across the full dataset and cannot be used in regression. ",
+      "Please remove %s from `predictors` and re-run:\n  %s"
+    ),
+    if (length(bad) == 1L) "" else "s",
+    if (length(bad) == 1L) "is" else "are",
+    if (length(bad) == 1L) "it" else "them",
+    paste(bad, collapse = ", ")
+  )
 }
 
 .pick_ref <- function(x, rule = "mode", levels = NULL) {
