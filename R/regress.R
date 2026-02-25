@@ -11,10 +11,28 @@
 #' common predictors only).
 #' @param min_n_context Rare level threshold for context predictors (default 10).
 #' @param ... Passed to engine (glm/clm/brm/etc).
-#' #' @note **Survey weights are not currently supported.** If `x` was created with
+#' @section Missing data and complete-case analysis:
+#' `besd_regress()` uses **listwise complete-case deletion**: any row with a missing
+#' value in the outcome or any predictor is dropped before fitting. This is unbiased
+#' only if data are missing completely at random (MCAR). If missingness is associated
+#' with the outcome or a predictor (MAR, MNAR) estimates may be biased. 
+#'
+#' Use [besd_missing_summary()] to inspect variable-level missingness before fitting.
+#' A warning is issued automatically when any predictor exceeds 5% missing or when 
+#' the listwise complete-case dataset exceeds 5% missingness. If missingness is 
+#' substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling 
+#' `besd_regress()`.
+#'
+#' For context predictors (e.g. ethnicity), `min_n_context` (default 10) silently
+#' recodes observations belonging to rare levels within a country to `NA` prior to 
+#' fitting, to avoid near-empty cells in the model matrix. These observations are then
+#' excluded by complete-case deletion. Reduce this threshold only if you are confident 
+#' small cells will not cause convergence problems.
+#' @note **Survey weights are not currently supported.** If `x` was created with
 #'   a `weight_col`, that column is stored in the object but ignored by `besd_regress()`. 
 #'   All models are fitted on unweighted data. This is a known limitation; weighted 
 #'   regression support is planned for a future release.
+#'   
 #' @export
 besd_regress <- function(x, 
                          outcome, 
@@ -164,6 +182,11 @@ besd_regress <- function(x,
   prep <- .prep_predictors(df, predictors, group_col = country_col, min_n = 5L, 
                            ref_rule = ref)
   df <- prep$df
+  
+  # Warn on joint listwise missingness now that rare-level NAs exist in df
+  .warn_missingness(df, vars = c(outcomes, predictors), country_col = country_col,
+                    threshold   = 0.05, context = "by_country")
+  
   countries <- sort(unique(as.character(df[[country_col]])))
   fits <- setNames(vector("list", length(countries)), countries)
   
@@ -289,6 +312,10 @@ besd_regress <- function(x,
   } else {
     prep_ctx <- list(level_map = list(), ref_code_by_group = list())
   }
+
+  # Warn on joint listwise missingness now that min_n_context NAs exist in df
+  .warn_missingness(df, vars = c(outcomes, preds_common, preds_context),
+                    country_col = country_col, threshold   = 0.05, context = "multilevel")
   
   # Encode countries
   countries <- sort(unique(as.character(df[[country_col]])))
@@ -392,16 +419,6 @@ besd_regress <- function(x,
   df2 <- cbind(df, as.data.frame(mat, stringsAsFactors = FALSE))
   
   list(df = df2, outcomes = out_names)
-}
-
-.make_safe_names <- function(x, sep = "_") {
-  if (!is.character(x)) x <- as.character(x)
-  x <- gsub("[^\\p{L}\\p{N}]+", "_", x, perl = TRUE)
-  x <- gsub("_+", "_", x)
-  x <- gsub("^_+|_+$", "", x)
-  x <- ifelse(grepl("^[0-9]", x), paste0("x", sep, x), x)
-  x[x == ""] <- "x"
-  make.unique(x, sep = sep)
 }
 
 .prep_predictors <- function(df, predictors, group_col = NULL, min_n = 0L, 
