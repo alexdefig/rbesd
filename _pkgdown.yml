@@ -1,0 +1,24 @@
+template:
+  bootstrap: 5
+reference:
+  - title: Data preparation
+    contents:
+      - as_besd
+      - besd_validate
+      - besd_long
+  - title: Summaries and scoring
+    contents:
+      - besd_summarise
+      - besd_score
+      - besd_dictionary
+  - title: Plotting
+    contents:
+      - besd_plot_items
+      - besd_plot_radar
+      - besd_plot_country_profile
+  - title: Modelling
+    contents:
+      - besd_regress
+      - besd_tidy
+      - besd_design
+      - besd_predictors

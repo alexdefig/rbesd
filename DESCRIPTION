@@ -1,0 +1,44 @@
+Package: rbesd
+Title: Tools for WHO/UNICEF BeSD Quantitative Data Preparation, Analysis, and Reporting
+Version: 0.1.0
+Authors@R: 
+    c(person(given = "Alexandre", family = "de Figueiredo",
+             role = c("aut", "cre"),
+             email = "alex.defigueiredo@lshtm.ac.uk"))
+Description: Provides a standardised workflow to prepare, validate, summarise, visualise,
+    and model WHO/UNICEF Behavioural and Social Drivers (BeSD) quantitative toolkit data.
+    Includes a harmonised item dictionary, plotting utilities, regression wrappers 
+    (frequentist and Bayesian; single-level and multilevel; binary and ordinal outcomes),
+    scoring/summaries to support routine analyses, as well as country fact-sheet makers.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    dplyr (>= 1.1.0),
+    tidyr (>= 1.3.0),
+    tibble (>= 3.2.0),
+    purrr (>= 1.0.0),
+    stringr (>= 1.5.0),
+    forcats (>= 1.0.0),
+    ggplot2 (>= 3.5.0),
+    rlang (>= 1.1.0),
+    stats,
+    utils,
+    broom (>= 1.0.0),
+    scales (>= 1.3.0)
+Suggests:
+    survey,
+    lme4,
+    ordinal,
+    brms,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/your-org/rbesd
+BugReports: https://github.com/your-org/rbesd/issues
+Depends: 
+    R (>= 3.5)
+LazyData: true
