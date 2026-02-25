@@ -483,6 +483,24 @@ besd_regress <- function(x,
        ref_code = ref_code)
 }
 
+# Canonical regex for residual category levels that should not be used as a regression
+# reference category, even if they are the modal or first-listed level. Matching is 
+# done on the output of .strip_non_alpnum (alphanumeric and lower case only).
+.PICK_REF_AVOID_RE <- paste0(
+  "^other",          # Other, Other/prefer not to say, ...
+  "| ^prefernot",    # Prefer not to say
+  "| ^declin",       # Declined, decline to state
+  "| ^noneofthe",    # None of the above
+  "| ^notstat",      # Not stated
+  "| ^unspecified$", # Unspecified
+  "| ^unknown$"      # Unknown
+)
+
+# Return TRUE for labels that are catch-all / residual categories
+.is_catchall <- function(x, rule = "mode", leves = NULL) {
+  grepl(.PICK_REF_AVOID_RE, .strip_non_alpnum(x))
+}
+
 .pick_ref <- function(x, rule = "mode", levels = NULL) {
   rule <- match.arg(rule, c("mode", "first"))
   x <- x[!is.na(x)]
@@ -495,15 +513,35 @@ besd_regress <- function(x,
       levs <- as.character(levels)
       levs <- levs[!is.na(levs)]
       hit <- levs[levs %in% x]
+      
+      # Prefer first to be non-catchall; fall back to first hit 
+      preferred <- hit[!.is_catchall(hit)]
+      if (length(preferred)) return(preferred[[1]])
       if (length(hit)) return(hit[[1]])
       return(levs[[1]])
     }
-    if (is.factor(x) && length(levels(x))) return(levels(x)[[1]])
-    return(levels(factor(x))[[1]])
+    # If levels=NULL but they exist
+    if (is.factor(x) && length(levels(x))) {
+      levs <- levels(x)
+      preferred <- levs[!.is_catchall(levs)]
+      if (length(preferred)) return(preferred[[1]])
+      return(levs[[1]])
+    } 
+    # Levels=NULL and x not a factor 
+    levs <- levels(factor(x))
+    preferred <- levs[!.is_catchall(levs)]
+    if (length(preferred)) return(preferred[[1]])
+    return(levs[[1]])
   }
   
+  # rule == "mode": pick the most frequent non-catchall level
   tab <- table(x)
-  names(tab)[which.max(tab)][[1]]
+  tab_preferred <- tab[!.is_catchall(names(tab))]
+  
+  # If every level is catch-all, fall back to mode
+  if (!length(tab_preferred)) tab_preferred <- tab
+  
+  names(tab_preferred)[which.max(tab_preferred)][[1]]
 }
 
 .apply_within_refs <- function(df, predictors, group_value, ref_code_by_group, 
