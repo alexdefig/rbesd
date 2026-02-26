@@ -1,3 +1,6 @@
+
+# ── summary() ──────────────────────────────────────────────────────────────────
+
 #' Summarise BeSD items by country
 #'
 #' Computes weighted response percentages by country (or national total if no
@@ -128,6 +131,9 @@ summary.besd_data <- function(object,
   out
 }
 
+
+# ── besd_demographics() ────────────────────────────────────────────────────────
+
 #' Extract demographic summaries
 #'
 #' When `summary(besd_data, include_demographics = TRUE)` is used, demographic
@@ -142,6 +148,8 @@ besd_demographics <- function(x) {
   attr(x, "demographics")
 }
 
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 #' @keywords internal
 .besd_summarise_one_item <- function(df, item_id, meta_row, country_col, weight_col,
                                      conf_level = 0.95, multichoice_specs = list(),

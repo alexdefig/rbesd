@@ -1,10 +1,15 @@
-#' Dirichlet-marginal intervals for a vector of category proportions
-#'
-#' Takes a vector `p` (length K) and returns a Kx2 matrix (lcl/ucl) of marginal
-#' intervals for each category under a symmetric Dirichlet(prior,...,prior) model
-#' using effective counts p * n_eff.
-#'
-#' @keywords internal
+
+# ── utils-maths.R ──────────────────────────────────────────────────────────────
+# Small internal math utilities used across the package. None are exported.
+#
+# .multinom_dirichlet_ci() – marginal Beta CIs for multinomial proportions
+# .beta_binom_ci()         – Jeffreys Beta CI for a single proportion
+# .effective_n()           – effective sample size for weighted data
+
+# Dirichlet-marginal intervals for a vector of category proportions.
+# Takes a vector `p` (length K) and returns a Kx2 matrix (lcl/ucl) of marginal
+# intervals for each category under a symmetric Dirichlet(prior,...,prior) model
+# using effective counts p * n_eff.
 .multinom_dirichlet_ci <- function(p, n_eff, conf_level = 0.95, prior = 0.5) {
   p <- as.numeric(p)
   
@@ -42,9 +47,8 @@
   cbind(lcl = lcl, ucl = ucl)
 }
 
-#' Jeffreys/Beta marginal CI for a single (possibly fractional) proportion
-#' Used for multichoice tokens (non-mutually-exclusive).
-#' @keywords internal
+# Jeffreys/Beta marginal CI for a single (possibly fractional) proportion.
+# Used for multichoice tokens (non-mutually-exclusive).
 .beta_binom_ci <- function(p, n_eff, conf_level = 0.95, prior = 0.5) {
   if (is.na(p) || is.na(n_eff) || n_eff <= 0) {
     return(c(lcl = NA_real_, ucl = NA_real_))
@@ -64,3 +68,17 @@
     ucl = stats::qbeta(1 - alpha / 2, shape1 = a, shape2 = b)
   )
 }
+
+# Effective sample size
+.effective_n <- function(w) {
+  w <- as.numeric(w)
+  w <- w[!is.na(w)]
+  
+  if (!length(w)) return(NA_real_)
+  
+  sw <- sum(w); sw2 <- sum(w^2)
+  
+  if (sw2 <= 0) return(NA_real_)
+  
+  (sw^2) / sw2
+}  

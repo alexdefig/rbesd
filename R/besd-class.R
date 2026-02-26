@@ -1,4 +1,5 @@
-# besd-class.R
+
+# ── BeSD data class ────────────────────────────────────────────────────────────
 
 #' Construct a `besd_data` object
 #'

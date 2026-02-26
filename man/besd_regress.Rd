@@ -38,12 +38,34 @@ common predictors only).}
 
 \item{min_n_context}{Rare level threshold for context predictors (default 10).}
 
-\item{...}{Passed to engine (glm/clm/brm/etc).
-#' @note \strong{Survey weights are not currently supported.} If \code{x} was created with
-a \code{weight_col}, that column is stored in the object but ignored by \code{besd_regress()}.
-All models are fitted on unweighted data. This is a known limitation; weighted
-regression support is planned for a future release.}
+\item{...}{Passed to engine (glm/clm/brm/etc).}
 }
 \description{
 Regression modelling for BeSD outcomes
 }
+\note{
+\strong{Survey weights are not currently supported.} If \code{x} was created with
+a \code{weight_col}, that column is stored in the object but ignored by \code{besd_regress()}.
+All models are fitted on unweighted data. This is a known limitation; weighted
+regression support is planned for a future release.
+}
+\section{Missing data and complete-case analysis}{
+
+\code{besd_regress()} uses \strong{listwise complete-case deletion}: any row with a missing
+value in the outcome or any predictor is dropped before fitting. This is unbiased
+only if data are missing completely at random (MCAR). If missingness is associated
+with the outcome or a predictor (MAR, MNAR) estimates may be biased.
+
+Use \code{\link[=besd_missing_summary]{besd_missing_summary()}} to inspect variable-level missingness before fitting.
+A warning is issued automatically when any predictor exceeds 5\% missing or when
+the listwise complete-case dataset exceeds 5\% missingness. If missingness is
+substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling
+\code{besd_regress()}.
+
+For context predictors (e.g. ethnicity), \code{min_n_context} (default 10) silently
+recodes observations belonging to rare levels within a country to \code{NA} prior to
+fitting, to avoid near-empty cells in the model matrix. These observations are then
+excluded by complete-case deletion. Reduce this threshold only if you are confident
+small cells will not cause convergence problems.
+}
+

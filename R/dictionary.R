@@ -1,4 +1,5 @@
 
+# ── besd_dictionary() ──────────────────────────────────────────────────────────
 #' BeSD item dictionary
 #'
 #' Built-in harmonised dictionary of core quantitative BeSD items. Questions and responses
@@ -207,6 +208,8 @@ besd_dictionary <- function() {
   .build_dictionary(items)
 }
 
+
+# ── dem_dictionary() ───────────────────────────────────────────────────────────
 #' Socio-demographic item dictionary
 #'
 #' @return A tibble with item metadata.
@@ -241,6 +244,8 @@ dem_dictionary <- function() {
   .build_dictionary(items)
 }
 
+
+# ── modify_dictionary() ────────────────────────────────────────────────────────
 #' Add / remove items from dictionary
 #'
 #' Items being added must include `item_id` and all required columns.
@@ -306,14 +311,19 @@ modify_dictionary <- function(df = NULL,
 }
 
 
-#' @keywords internal
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+# Return the required dictionary column names in the correct order. When
+# `with_id = TRUE`, prepends "item_id" for contexts that need the full schema.
 .dictionary_cols <- function(with_id = FALSE) {
   cols <- c("domain", "item_type", "levels", "reverse", "question", "question_short")
   if (isTRUE(with_id)) cols <- c("item_id", cols)
   cols
 }
 
-#' @keywords internal
+# Construct a validated dictionary tibble from a named list of item definitions.
+# Names become `item_id`. Each element must contain exactly the fields returned by 
+# .dictionary_cols(); missing or unknown fields stop with an informative message.
 .build_dictionary <- function(items) {
   req <- .dictionary_cols(FALSE)
   
@@ -370,14 +380,17 @@ modify_dictionary <- function(df = NULL,
   out
 }
 
-#' @keywords internal
+# Look up the `item_type` of a single item in `dict`. Stops if the item not found.
 .item_type <- function(dict, item_id) {
   m <- dict[dict$item_id == item_id, , drop = FALSE]
   if (nrow(m) == 0) .stopf("Item not in dictionary: %s", item_id)
   m$item_type[[1]]
 }
 
-#' @keywords internal
+# Validate a dictionary data frame and return a character vector of problem
+# descriptions (empty if valid). Checks required columns, types, allowed `item_type` 
+# values, `reverse` logic, and that `levels` is a non-empty list-column of character 
+# vectors. Returns problems rather than stopping so callers can choose how to handle.
 .validate_dict <- function(dict,
                            with_id = TRUE,
                            allowed_item_types = c(
@@ -464,7 +477,8 @@ modify_dictionary <- function(df = NULL,
   probs
 }
 
-#' @keywords internal
+# Assert that `dict` passes .validate_dict(); stop with a consolidated error message 
+# listing all problems if it does not. Returns invisible(TRUE) on success.
 .assert_valid_dict <- function(dict, 
                                with_id = TRUE, ..., 
                                arg = deparse(substitute(dict))) {

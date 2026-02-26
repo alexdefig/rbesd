@@ -1,3 +1,6 @@
+
+# ── tidy_model() ───────────────────────────────────────────────────────────────
+
 #' Tidy BeSD model outputs
 #'
 #' @param fit A `besd_regress()` output.
@@ -97,10 +100,9 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   .apply_exp(out, exponentiate)
 }
 
-# ---- Model tidying ---------------------------------------------------------
 
-#' Tidy models
-#' @keywords internal
+# ── Model tidying helpers ──────────────────────────────────────────────────────
+
 .tidy_model <- function(model, engine, conf_level, include_random, meta) {
   
   # Tidy fixed-effect terms
@@ -242,8 +244,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
     )
   )
 }
-
-# ---- Random effects --------------------------------------------------------
 
 .tidy_re_freq <- function(model, conf_level = 0.95, meta = NULL) {
   alpha <- 1 - conf_level
@@ -458,8 +458,8 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
         
         coef_show <- if (tm == "(Intercept)") "Intercept" else tm
         coef_info <- .parse_terms(coef_show, meta)
-        var_join  <- if (coef_show != "Intercept") coef_info$variable[[1]] else NA_character_
-        lev_join  <- if (coef_show != "Intercept") coef_info$level[[1]]    else NA_character_
+        var_join <- if (coef_show != "Intercept") coef_info$variable[[1]] else NA_character_
+        lev_join <- if (coef_show != "Intercept") coef_info$level[[1]]    else NA_character_
         
         # Context dummies: only emit the owning country's row.
         # Common predictors and Intercept: emit all countries.
@@ -544,7 +544,8 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   dplyr::bind_rows(rows)
 }
 
-# ---- Term parsing ----------------------------------------------------------
+
+# ── General helpers ────────────────────────────────────────────────────────────
 
 .parse_terms <- function(terms, meta) {
   term_map <- meta$term_map %||% NULL
@@ -626,8 +627,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   paste0(toupper(substr(x, 1, 1)), substr(x, 2, nchar(x)))
 }
 
-# ---- Utilities -------------------------------------------------------------
-
 .empty_tidy <- function(include_baseline = FALSE) {
   # Keep a stable schema for downstream dplyr/purrr consumers.
   tb <- tibble::tibble(
@@ -666,14 +665,10 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 .get_diag <- function(model) {
   empty <- tibble::tibble(variable = character(), rhat = numeric(), ess = numeric())
   
-  # Attempt to get draws, stripping path__ if present (Pathfinder produces
-  # path__ instead of chain__; posterior::summarise_draws() chokes on it).
+  # Attempt to get draws
   draws <- tryCatch({
     d <- posterior::as_draws_array(model)
     pvars <- posterior::variables(d)
-    if ("path__" %in% pvars) {
-      d <- posterior::subset_draws(d, variable = setdiff(pvars, "path__"))
-    }
     d
   }, error = function(e) NULL)
   
@@ -754,7 +749,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   )
 }
 
-# ---- Baselines (reference categories) -------------------------------------
+# ── Baseline helpers ───────────────────────────────────────────────────────────
 
 .empty_baseline_tbl <- function() {
   tibble::tibble(

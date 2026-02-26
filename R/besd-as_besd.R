@@ -1,4 +1,5 @@
-# besd-class.R
+
+# ── as_besd() ──────────────────────────────────────────────────────────────────
 
 #' Prepare and standardise WHO/UNICEF BeSD data
 #'
@@ -203,43 +204,7 @@ as_besd <- function(df,
 }
 
 
-#' @keywords internal
-.apply_dict_mapping <- function(df, dict, mapping, multichoice_specs = list()) {
-  
-  if (is.null(mapping)) .stopf("No `mapping` provided.")
-  
-  if (!is.character(mapping) ||
-      is.null(names(mapping)) || any(names(mapping) == "")) {
-    .stopf("`mapping` must be *named* char vector: names = raw cols, values = item_id")
-  }
-  
-  missing_raw <- setdiff(names(mapping), names(df))
-  if (length(missing_raw))
-    .stopf("Mapping refers to missing raw cols: %s", paste(missing_raw, collapse = ", "))
-  
-  map_groups <- split(names(mapping), mapping)  # item_id -> raw cols
-  
-  for (item_id in names(map_groups)) {
-    if (!item_id %in% dict$item_id)
-      .stopf("Mapped item_id `%s` not found in dictionary.", item_id)
-    
-    raws       <- map_groups[[item_id]]
-    meta       <- dict[dict$item_id == item_id, , drop = FALSE]
-    item_type  <- meta$item_type[[1]]
-    levels_std <- meta$levels[[1]]
-    
-    if (length(raws) == 1L) { df[[item_id]] <- df[[raws]]; next }
-    
-    if (item_type != "multichoice")
-      .stopf("Multiple raw cols mapped to `%s` but item_type is `%s`", item_id, item_type)
-    
-    spec          <- multichoice_specs[[item_id]] %||% list()
-    df[[item_id]] <- .pack_multichoice_cols(df, raws, levels_std, spec)
-  }
-  
-  df
-}
-
+# ── besd_recode_missing() ──────────────────────────────────────────────────────
 
 #' Recode missing-data tokens to NA
 #'
@@ -342,12 +307,48 @@ besd_recode_missing <- function(x,
   )
 }
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-#' @keywords internal
-#' Coerce items to dictionary types and levels.
-#' missing_tokens are allow-listed so they are not flagged as unknown values.
-#' They are always retained as explicit trailing factor levels here; callers
-#' that want them recoded to NA should call besd_recode_missing() afterwards.
+.apply_dict_mapping <- function(df, dict, mapping, multichoice_specs = list()) {
+  
+  if (is.null(mapping)) .stopf("No `mapping` provided.")
+  
+  if (!is.character(mapping) ||
+      is.null(names(mapping)) || any(names(mapping) == "")) {
+    .stopf("`mapping` must be *named* char vector: names = raw cols, values = item_id")
+  }
+  
+  missing_raw <- setdiff(names(mapping), names(df))
+  if (length(missing_raw))
+    .stopf("Mapping refers to missing raw cols: %s", paste(missing_raw, collapse = ", "))
+  
+  map_groups <- split(names(mapping), mapping)  # item_id -> raw cols
+  
+  for (item_id in names(map_groups)) {
+    if (!item_id %in% dict$item_id)
+      .stopf("Mapped item_id `%s` not found in dictionary.", item_id)
+    
+    raws       <- map_groups[[item_id]]
+    meta       <- dict[dict$item_id == item_id, , drop = FALSE]
+    item_type  <- meta$item_type[[1]]
+    levels_std <- meta$levels[[1]]
+    
+    if (length(raws) == 1L) { df[[item_id]] <- df[[raws]]; next }
+    
+    if (item_type != "multichoice")
+      .stopf("Multiple raw cols mapped to `%s` but item_type is `%s`", item_id, item_type)
+    
+    spec          <- multichoice_specs[[item_id]] %||% list()
+    df[[item_id]] <- .pack_multichoice_cols(df, raws, levels_std, spec)
+  }
+  
+  df
+}
+
+# Coerce items to dictionary types and levels.
+# missing_tokens are allow-listed so they are not flagged as unknown values.
+# They are always retained as explicit trailing factor levels here; callers
+# that want them recoded to NA should call besd_recode_missing() afterwards.
 .coerce_dict_items <- function(df,
                                dict,
                                items,
@@ -374,10 +375,9 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
-#' Coerce a single item vector to its dictionary type.
-#' missing_tokens are kept as explicit trailing levels; recoding to NA is the
-#' sole responsibility of besd_recode_missing().
+# Coerce a single item vector to its dictionary type.
+# missing_tokens are kept as explicit trailing levels; recoding to NA is the
+# sole responsibility of besd_recode_missing().
 .coerce_item <- function(x,
                          meta_row,
                          spec            = list(),
@@ -451,7 +451,7 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
+#
 .coerce_multichoice_packed <- function(x,
                                        levels_std,
                                        sep             = .BESD_SEP,
@@ -512,7 +512,7 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
+#
 .pack_multichoice_cols <- function(df, cols, levels_std, spec = list()) {
   
   encoding <- spec$encoding %||% "text_prefix"
@@ -583,7 +583,7 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
+#
 .besd_missing_tokens_for_item <- function(missing_tokens, item_id) {
   if (is.null(missing_tokens))                                     return(NULL)
   if (is.character(missing_tokens))                                return(missing_tokens)
@@ -599,7 +599,7 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
+#
 .level_map <- function(levels_std) {
   keys <- .strip_non_alpnum(levels_std)
   if (anyDuplicated(keys)) {
@@ -610,11 +610,8 @@ besd_recode_missing <- function(x,
 }
 
 
-# ---- Private helpers shared across coerce functions -------------------------
-
-#' @keywords internal
-#' Emit an error or warning for unknown values; does not mutate anything.
-#' Callers are responsible for setting unknown values to NA after this call.
+# Emit an error or warning for unknown values; does not mutate anything.
+# Callers are responsible for setting unknown values to NA after this call.
 .check_unknown <- function(bad, unknown_action, warn_on_unknown,
                            err_fmt  = "Found value(s) not in dictionary levels: %s",
                            warn_fmt = "Coercing %d unknown value(s) to NA: %s") {
@@ -624,11 +621,9 @@ besd_recode_missing <- function(x,
     warning(sprintf(warn_fmt, length(bad), .pastec(sort(bad))), call. = FALSE)
 }
 
-
-#' @keywords internal
-#' Warn when standard dictionary levels are absent from the observed data.
-#' `observed` is the vector of values (or tokens) after coercion; miss_keys are
-#' the canonicalised missing-token keys to exclude from the presence check.
+# Warn when standard dictionary levels are absent from the observed data.
+# `observed` is the vector of values (or tokens) after coercion; miss_keys are
+# the canonicalised missing-token keys to exclude from the presence check.
 .warn_absent_levels <- function(levels_std, observed, miss_keys, warn_msg) {
   std_only    <- observed[!is.na(observed) &
                             !(.strip_non_alpnum(observed) %in% miss_keys)]
@@ -638,10 +633,9 @@ besd_recode_missing <- function(x,
 }
 
 
-#' @keywords internal
-#' Recode missing-token values to NA in a single vector, handling both factor
-#' and non-factor columns. Factor levels containing tokens are dropped when
-#' drop_levels = TRUE.
+# Recode missing-token values to NA in a single vector, handling both factor
+# and non-factor columns. Factor levels containing tokens are dropped when
+# drop_levels = TRUE.
 .na_missing_tokens <- function(v, miss_keys, drop_levels = TRUE) {
   v_chr   <- as.character(v)
   is_miss <- !is.na(v_chr) & (.strip_non_alpnum(v_chr) %in% miss_keys)

@@ -1,8 +1,14 @@
-# Internal assertions and small utilities.
-# These are intentionally not exported.
+
+# ── utils-assert.R ─────────────────────────────────────────────────────────────
+# Small internal assertion utilities used across the package. None are exported.
+#
+# .assert_besd()             – stop if `x` is not a `besd_data` object
+# .assert_has_cols()         – stop if required columns are absent from a data frame
+# .assert_is_scalar_string() – stop if `x` is not a non-empty length-1 string
+# .assert_is_scalar_number() – stop if `x` is not a single finite numeric
+
 
 # Assert that an object inherits from `besd_data`.
-# Returns `x` invisibly to allow piping / inline use.
 .assert_besd <- function(x) {
   if (!inherits(x, "besd_data")) {
     stop("`x` must be a `besd_data` object.", call. = FALSE)
@@ -10,10 +16,10 @@
   invisible(x)
 }
 
-# Assert that `df` is a data.frame and that `cols` exist in it.
-# Supports either a scalar column name (scalar = TRUE) or a character vector.
-# If null_ok = TRUE, NULL is allowed and the check is skipped.
-# If strict = TRUE (and scalar = FALSE), `cols` must already be character.
+# Assert that `df` is a data.frame and that `cols` exist in it. Supports either a scalar 
+# column name (scalar = TRUE) or a character vector. If null_ok = TRUE, NULL is allowed 
+# and the check is skipped. If strict = TRUE (and scalar = FALSE), `cols` must already be 
+# character.
 .assert_has_cols <- function(df, cols, context = "data", nm = "cols", scalar = FALSE,
                              null_ok = FALSE, strict = FALSE) {
   if (!is.data.frame(df)) .stopf("`%s` must be a data.frame.", context)
@@ -46,8 +52,8 @@
   invisible(TRUE)
 }
 
-# Assert that `x` is a non-empty, length-1 character string.
-# Useful for user-facing scalar string arguments.
+# Assert that `x` is a non-empty, length-1 character string. Useful for user-facing
+# scalar string arguments.
 .assert_is_scalar_string <- function(x, nm = deparse(substitute(x))) {
   if (!is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x)) {
     stop(

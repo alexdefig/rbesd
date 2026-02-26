@@ -1,3 +1,6 @@
+
+# ── besd_missing_summary() ─────────────────────────────────────────────────────
+
 #' Summarise missing data fractions for regression variables
 #'
 #' Reports per-variable and joint (listwise) missing fractions. The joint fraction is 
