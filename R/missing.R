@@ -1,4 +1,3 @@
-
 # ── besd_missing_summary() ─────────────────────────────────────────────────────
 
 #' Summarise missing data fractions for regression variables
@@ -7,7 +6,7 @@
 #' the proportion of rows that `complete.cases()` would drop across all variables 
 #' together — the number that actually matters for complete-case regression.
 #'
-#' Call this after preparing your `besd_data` object but before `besd_regress()`, 
+#' Call this after preparing your `besd_data` object but before [besd_regress()], 
 #' optionally re-running after applying `min_n_context` manually to see its impact on 
 #' the joint fraction.
 #'
@@ -134,4 +133,194 @@ besd_missing_summary <- function(x, vars = NULL, country_col = NULL,
     ),
     call. = FALSE
   )
+}
+
+# ── besd_rare_levels() ─────────────────────────────────────────────────────────
+
+#' Inspect rare factor levels before fitting
+#'
+#' Reports per-(predictor, country, level) observation counts so you can make
+#' an informed choice about `min_n_context` before calling [besd_prepare()] or
+#' [besd_regress()]. Levels with very few observations can cause near-complete
+#' separation or wildly unstable estimates; levels below your chosen threshold
+#' will be recoded to `NA` by `min_n_context` and excluded via listwise
+#' deletion.
+#'
+#' Only unordered factor and character columns are examined — continuous and
+#' ordered predictors are skipped with a message.
+#'
+#' @param x A `besd_data` object or plain data frame.
+#' @param predictors Character vector of predictor column names to inspect.
+#' @param country_col Name of the country column. Inferred automatically from
+#'   `besd_data` objects; required for plain data frames.
+#' @param min_n Integer threshold to flag against (default `10L`). Sets the
+#'   `would_collapse` column — does not modify the data.
+#' @param only_rare If `TRUE` (default), return only rows where `n < min_n`.
+#'   Set to `FALSE` to see all (predictor, country, level) combinations.
+#'
+#' @return A tibble with columns:
+#'   \describe{
+#'     \item{predictor}{Column name.}
+#'     \item{country}{Country label.}
+#'     \item{level}{Human-readable level label (or raw value if no label found).}
+#'     \item{n}{Observation count in this cell.}
+#'     \item{pct}{Fraction of that country's rows this cell represents.}
+#'     \item{would_collapse}{`TRUE` if `n < min_n` — this level would be
+#'       recoded to `NA` at the given threshold.}
+#'     \item{n_rows_affected}{Number of rows that would be recoded to `NA`
+#'       (equals `n` for levels that would collapse, `0L` otherwise).}
+#'   }
+#'   Ordered by `predictor`, `would_collapse` (TRUE first), then `n` ascending,
+#'   so the most dangerous cells are at the top within each predictor.
+#'   Returns a zero-row tibble if no factor predictors are found.
+#'
+#' @examples
+#' \dontrun{
+#' # Check before choosing min_n_context
+#' besd_rare_levels(my_data, predictors = c("dem_eth", "dem_rel"))
+#'
+#' # See full breakdown including common levels
+#' besd_rare_levels(my_data, predictors = "dem_eth", only_rare = FALSE)
+#' }
+#' @export
+besd_rare_levels <- function(x, predictors, country_col = NULL,
+                             min_n = 10L, only_rare = TRUE) {
+  
+  # ── Resolve data and country column ─────────────────────────────────────────
+  if (inherits(x, "besd_data")) {
+    info        <- besd_info(x)
+    country_col <- info$country_col
+    df          <- tibble::as_tibble(x)
+    dem_dict    <- info$dem_dict %||% NULL
+  } else {
+    if (!is.data.frame(x)) .stopf("`x` must be a besd_data or data frame.")
+    df       <- tibble::as_tibble(x)
+    dem_dict <- NULL
+  }
+  
+  if (is.null(country_col) || !nzchar(country_col)) {
+    .stopf("`country_col` must be supplied for plain data frames.")
+  }
+  .assert_has_cols(df, c(country_col, predictors), "x")
+  
+  min_n <- as.integer(min_n)
+  
+  # ── Identify factor/character columns; skip others with a message ────────────
+  skip <- predictors[vapply(predictors, function(p) {
+    v <- df[[p]]
+    !is.factor(v) && !is.character(v)
+  }, logical(1))]
+  if (length(skip)) {
+    message(
+      "Skipping non-factor predictor(s) (no discrete levels to inspect): ",
+      paste(skip, collapse = ", ")
+    )
+  }
+  factor_preds <- setdiff(predictors, skip)
+  if (!length(factor_preds)) {
+    message("No factor predictors found. Returning empty tibble.")
+    return(.empty_rare_levels_tbl())
+  }
+  
+  # ── Build label lookup from dem_dict if available ───────────────────────────
+  .level_label <- function(pred, code) {
+    # code here is the raw value in the column (may already be human-readable
+    # for character columns, or an opaque __01 code for encoded factors)
+    as.character(code)
+  }
+  
+  countries <- sort(unique(as.character(df[[country_col]])))
+  rows      <- list()
+  
+  for (pred in factor_preds) {
+    v     <- df[[pred]]
+    v_chr <- if (is.factor(v)) as.character(v) else v
+    
+    for (cc in countries) {
+      ii      <- which(as.character(df[[country_col]]) == cc)
+      n_cc    <- length(ii)
+      v_cc    <- v_chr[ii]
+      obs     <- v_cc[!is.na(v_cc)]
+      
+      if (!length(obs)) next
+      
+      tab <- sort(table(obs), decreasing = FALSE)
+      
+      for (lv in names(tab)) {
+        cnt <- as.integer(tab[[lv]])
+        rows[[length(rows) + 1L]] <- tibble::tibble(
+          predictor       = pred,
+          country         = cc,
+          level           = .level_label(pred, lv),
+          n               = cnt,
+          pct             = cnt / n_cc,
+          would_collapse  = cnt < min_n,
+          n_rows_affected = if (cnt < min_n) cnt else 0L
+        )
+      }
+    }
+  }
+  
+  if (!length(rows)) return(.empty_rare_levels_tbl())
+  
+  out <- dplyr::bind_rows(rows)
+  
+  # Order: predictor, would_collapse descending (TRUE first), n ascending
+  out <- dplyr::arrange(out, predictor, dplyr::desc(would_collapse), n)
+  
+  if (isTRUE(only_rare)) {
+    out <- out[out$would_collapse, , drop = FALSE]
+  }
+  
+  out
+}
+
+.empty_rare_levels_tbl <- function() {
+  tibble::tibble(
+    predictor       = character(),
+    country         = character(),
+    level           = character(),
+    n               = integer(),
+    pct             = numeric(),
+    would_collapse  = logical(),
+    n_rows_affected = integer()
+  )
+}
+
+
+# Internal: message (not warning) listing countries where a context predictor
+# has no observed levels after min_n collapsing. These countries simply
+# contribute to the model without that predictor term — this is expected
+# behaviour, not a data quality problem. Fires once per predictor, only when
+# at least one country is fully absent.
+.inform_context_coverage <- function(df, preds_context, country_col) {
+  if (!length(preds_context)) return(invisible(NULL))
+  
+  countries <- sort(unique(as.character(df[[country_col]])))
+  cc_vec    <- as.character(df[[country_col]])
+  
+  for (pred in preds_context) {
+    v <- df[[pred]]
+    v_chr <- if (is.factor(v)) as.character(v) else as.character(v)
+    
+    absent <- vapply(countries, function(cc) {
+      obs <- v_chr[cc_vec == cc & !is.na(v_chr)]
+      length(obs) == 0L
+    }, logical(1))
+    
+    missing_countries <- countries[absent]
+    if (!length(missing_countries)) next
+    
+    message(sprintf(
+      paste0(
+        "Context predictor `%s` has no observed levels in %d country/countries ",
+        "(%s). Those countries will be fitted without this predictor term. ",
+        "This is expected when a variable is not collected everywhere."
+      ),
+      pred,
+      length(missing_countries),
+      paste(missing_countries, collapse = ", ")
+    ))
+  }
+  invisible(NULL)
 }

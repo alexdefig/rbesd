@@ -512,7 +512,8 @@ besd_recode_missing <- function(x,
 }
 
 
-#
+# Pack multiple binary indicator columns into a single delimited multichoice
+# string. Handles text_prefix and binary encoding schemes.
 .pack_multichoice_cols <- function(df, cols, levels_std, spec = list()) {
   
   encoding <- spec$encoding %||% "text_prefix"
@@ -583,7 +584,8 @@ besd_recode_missing <- function(x,
 }
 
 
-#
+# Resolve the missing token vector for a single item, combining the `.all`
+# cross-item default with any item-specific tokens. Returns NULL if none 
 .besd_missing_tokens_for_item <- function(missing_tokens, item_id) {
   if (is.null(missing_tokens))                                     return(NULL)
   if (is.character(missing_tokens))                                return(missing_tokens)
@@ -599,7 +601,8 @@ besd_recode_missing <- function(x,
 }
 
 
-#
+# Build a named lookup from dictionary levels to normalised alphanumeric keys
+# for fuzzy response matching. Errors if two levels normalise identically.
 .level_map <- function(levels_std) {
   keys <- .strip_non_alpnum(levels_std)
   if (anyDuplicated(keys)) {
@@ -633,9 +636,8 @@ besd_recode_missing <- function(x,
 }
 
 
-# Recode missing-token values to NA in a single vector, handling both factor
-# and non-factor columns. Factor levels containing tokens are dropped when
-# drop_levels = TRUE.
+# Recode missing-token values to NA in a single vector. Drops the corresponding
+# factor levels when drop_levels = TRUE.
 .na_missing_tokens <- function(v, miss_keys, drop_levels = TRUE) {
   v_chr   <- as.character(v)
   is_miss <- !is.na(v_chr) & (.strip_non_alpnum(v_chr) %in% miss_keys)

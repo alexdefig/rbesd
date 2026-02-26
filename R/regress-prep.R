@@ -1,4 +1,3 @@
-
 # ── besd_prepare() ─────────────────────────────────────────────────────────────
 
 #' Prepare a BeSD dataset for regression
@@ -141,12 +140,6 @@ besd_prepare <- function(x,
       prep_ctx <- list(level_map = list(), ref_code_by_group = list())
     }
     
-    .warn_missingness(df,
-                      vars        = c(outcomes, preds_common, preds_context),
-                      country_col = country_col,
-                      threshold   = 0.05,
-                      context     = "multilevel")
-    
     # Country encoding (C01, C02, ...)
     countries       <- sort(unique(as.character(df[[country_col]])))
     country_code_of <- stats::setNames(sprintf("C%02d", seq_along(countries)),
@@ -165,6 +158,23 @@ besd_prepare <- function(x,
         added_ctx    <- c(added_ctx, ex$added)
         ctx_term_map <- c(ctx_term_map, ex$term_map)
       }
+    }
+    
+    # Warn on joint missingness across outcome + common predictors only.
+    # Context predictors are intentionally excluded: their NAs are converted to
+    # 0s in the dummy columns above and do NOT cause listwise deletion. A
+    # country where a context predictor is entirely missing is expected and
+    # normal — those rows simply contribute without that predictor.
+    .warn_missingness(df,
+                      vars        = c(outcomes, preds_common),
+                      country_col = country_col,
+                      threshold   = 0.05,
+                      context     = "multilevel")
+    
+    # Separately report countries where a context predictor has no observed
+    # levels — informational only, not a data quality warning.
+    if (length(preds_context)) {
+      .inform_context_coverage(df, preds_context, country_col)
     }
     
     level_map                 <- prep_common$level_map

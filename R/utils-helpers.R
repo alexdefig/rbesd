@@ -9,8 +9,6 @@
 # .pastec()           – paste with ", " collapse for error messages
 # .strip_non_alpnum() – normalise a string to lowercase alphanumeric
 # .make_safe_names()  – convert arbitrary strings to unique R identifiers
-# .effective_n()      – Kish effective sample size for weighted data
-
 
 # Unit separator (U+001F): chosen as the packed multichoice delimiter because
 # it is a non-printable ASCII control character that cannot appear in survey

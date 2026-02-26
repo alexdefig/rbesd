@@ -1,4 +1,3 @@
-
 # ── besd_regress() ─────────────────────────────────────────────────────────────
 
 #' Regression modelling for BeSD outcomes
@@ -10,71 +9,71 @@
 #' @param engine "frequentist" or "bayes".
 #' @param ref Reference rule: "mode" or "first".
 #' @param random_slopes If TRUE (multilevel), fit random slopes for common predictors.
-#' @param ref_levels Optional named list of explicit reference labels (multilevel 
-#' common predictors only).
+#' @param correlated_re If TRUE (multilevel Bayes), estimate correlations between
+#'   random effects.
+#' @param ref_levels Optional named list of explicit reference labels (multilevel
+#'   common predictors only).
 #' @param min_n_context Rare level threshold for context predictors (default 10).
 #' @param ... Passed to engine (glm/clm/brm/etc).
 #' @section Missing data and complete-case analysis:
 #' `besd_regress()` uses **listwise complete-case deletion**: any row with a missing
 #' value in the outcome or any predictor is dropped before fitting. This is unbiased
 #' only if data are missing completely at random (MCAR). If missingness is associated
-#' with the outcome or a predictor (MAR, MNAR) estimates may be biased. 
+#' with the outcome or a predictor (MAR, MNAR) estimates may be biased.
 #'
 #' Use [besd_missing_summary()] to inspect variable-level missingness before fitting.
-#' A warning is issued automatically when any predictor exceeds 5% missing or when 
-#' the listwise complete-case dataset exceeds 5% missingness. If missingness is 
-#' substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling 
+#' A warning is issued automatically when any predictor exceeds 5% missing or when
+#' the listwise complete-case dataset exceeds 5% missingness. If missingness is
+#' substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling
 #' `besd_regress()`.
 #'
 #' For context predictors (e.g. ethnicity), `min_n_context` (default 10) silently
-#' recodes observations belonging to rare levels within a country to `NA` prior to 
+#' recodes observations belonging to rare levels within a country to `NA` prior to
 #' fitting, to avoid near-empty cells in the model matrix. These observations are then
 #' excluded by complete-case deletion. Reduce this threshold only if you are confident 
 #' small cells will not cause convergence problems.
+#' 
+#' After examining missing data with [besd_missing_summary()] consider manually 
+#' recoding rare levels before calling [as_besd()].
+#' 
 #' @note **Survey weights are not currently supported.** If `x` was created with
-#'   a `weight_col`, that column is stored in the object but ignored by `besd_regress()`. 
-#'   All models are fitted on unweighted data. This is a known limitation; weighted 
+#'   a `weight_col`, that column is stored in the object but ignored by `besd_regress()`.
+#'   All models are fitted on unweighted data. This is a known limitation; weighted
 #'   regression support is planned for a future release.
-#'   
+#'
 #' @export
-besd_regress <- function(x, 
-                         outcome, 
-                         predictors, 
-                         scope = c("by_country", "multilevel"),
-                         engine = c("frequentist", "bayes"), 
-                         ref = c("mode", "first"),
-                         random_slopes = FALSE, 
+besd_regress <- function(x,
+                         outcome,
+                         predictors,
+                         scope         = c("by_country", "multilevel"),
+                         engine        = c("frequentist", "bayes"),
+                         ref           = c("mode", "first"),
+                         random_slopes = FALSE,
                          correlated_re = FALSE,
-                         ref_levels = list(),
+                         ref_levels    = list(),
                          min_n_context = 10L, ...) {
   
-  # Assert class and get object fields
   .assert_besd(x)
   info <- besd_info(x)
   
-  # Match input args
   scope  <- match.arg(scope)
   engine <- match.arg(engine)
   ref    <- match.arg(ref)
   
-  # Validate outcome early to avoid confusing downstream errors
-  if (!is.character(outcome) || length(outcome) != 1L || is.na(outcome) || 
-      !nzchar(outcome) || !(outcome %in% info$besd_items)) { 
+  # Validate outcome before passing to besd_prepare() to give a clear error.
+  if (!is.character(outcome) || length(outcome) != 1L || is.na(outcome) ||
+      !nzchar(outcome) || !(outcome %in% info$besd_items)) {
     .stopf("`outcome` must be a single non-empty BeSD `item_id` string.")
   }
   
-  df <- dplyr::as_tibble(x)
-  dict <- info$besd_dict
-  country_col <- info$country_col
-  
-  # Warn if the object carries a weight column - it is not used in regression.
-  if (!is.null(info$weight_col) && nzchar(info$weight_col)) {
+  # Warn if the object carries a weight column — it is not used in regression.
+  if (!is.null(info$weight_col) && nzchar(info$weight_col %||% "")) {
     warning(
       sprintf(
         paste0(
           "Survey weights (`%s`) are stored in this `besd_data` object but are not ",
-          "currently supported by `besd_regress()`. Models will be fitted on unweighted ", 
-          "data."
+          "currently supported by `besd_regress()`. Models will be fitted on ",
+          "unweighted data."
         ),
         info$weight_col
       ),
@@ -82,34 +81,81 @@ besd_regress <- function(x,
     )
   }
   
-  # Prepare besd_data object for regression
   prep <- besd_prepare(
-   x, 
-   outcome       = outcome, 
-   predictors    = predictors,
-   scope         = scope,
-   engine        = engine,
-   ref           = ref,
-   random_slopes = random_slopes,
-   correlated_re = correlated_re,
-   ref_levels    = ref_levels,
-   min_n_context = min_n_context
+    x,
+    outcome       = outcome,
+    predictors    = predictors,
+    scope         = scope,
+    engine        = engine,
+    ref           = ref,
+    random_slopes = random_slopes,
+    correlated_re = correlated_re,
+    ref_levels    = ref_levels,
+    min_n_context = min_n_context
   )
- 
- # Dispatch to fitting call
- if (scope == "by_country") {
-   .fit_by_country(prep, ...)
- } else {
-   .fit_multilevel(prep, ...)
- }
+  
+  if (scope == "by_country") {
+    .fit_by_country(prep, ...)
+  } else {
+    .fit_multilevel(prep, ...)
+  }
 }
 
 
-# ── .fit_by_country(), .fit_multilevel(), .fit_model() ─────────────────────────
+# ── Orchestrator ───────────────────────────────────────────────────────────────
 
-# Fit per-country models: encodes predictors, applies complete-case deletion
-# and two-pass predictor dropping within each country, then fits one model
-# per outcome. Countries or outcomes with insufficient variance are skipped.
+# Dispatch to the appropriate model fitter based on engine and y_type. Expects
+# a pre-filtered data frame; callers handle complete-case deletion before this.
+.fit_model <- function(dat, formula, y_type, engine, multilevel) {
+  
+  vars    <- all.vars(formula)
+  missing <- setdiff(vars, names(dat))
+  if (length(missing)) {
+    .stopf("Formula references missing column(s): %s", .pastec(missing))
+  } 
+  
+  dd <- dat[, unique(vars), drop = FALSE]
+  
+  if (engine == "frequentist") {
+    if (y_type == "binary") {
+      if (multilevel) {
+        .require_pkg("lme4", "for multilevel logistic regression")
+        return(lme4::glmer(formula, data = dd, family = stats::binomial(), ...))
+      }
+      return(stats::glm(formula, data = dd, family = stats::binomial(), ...))
+    }
+    if (y_type == "ordinal") {
+      .require_pkg("ordinal", "for ordinal regression")
+      if (multilevel) return(ordinal::clmm(formula, data = dd, link = "logit", ...))
+      return(ordinal::clm(formula, data = dd, link = "logit", ...))
+    }
+    .stopf("Unsupported y_type: %s", y_type)
+  }
+  
+  .require_pkg("brms", "for Bayesian regression")
+  if (y_type == "binary") {
+    pri <- c(brms::set_prior("normal(0, 1)", class = "b"),
+             brms::set_prior("student_t(3, 0, 2.5)", class = "Intercept"))
+    return(brms::brm(formula, data = dd,
+                     family = brms::bernoulli(link = "logit"),
+                     prior = pri, ...))
+  }
+  if (y_type == "ordinal") {
+    pri <- c(brms::set_prior("normal(0, 1)", class = "b"),
+             brms::set_prior("student_t(3, 0, 2.5)", class = "Intercept"))
+    return(brms::brm(formula, data = dd,
+                     family = brms::cumulative(link = "logit"),
+                     prior = pri, ...))
+  }
+  .stopf("Unsupported y_type: %s", y_type)
+}
+
+
+# ── Dispatchers ────────────────────────────────────────────────────────────────
+
+# Fit per-country models: applies complete-case deletion and two-pass predictor
+# dropping within each country, then fits one model per outcome. Countries or
+# outcomes with insufficient variance are skipped.
 .fit_by_country <- function(prep, ...) {
   df          <- prep$df
   outcomes    <- prep$outcomes
@@ -176,29 +222,29 @@ besd_regress <- function(x,
             (!is.factor(y) && length(unique(y)) < 2L)) next
       }
       
-      f <- stats::as.formula(paste0(yy, " ~ ", paste(keep2, collapse = " + ")))
-      fits_cc[[yy]] <- .fit_model(dd, f, y_type, engine, FALSE,
-                                  do_complete_cases = FALSE, ...)
-      fits[[cc]] <- fits_cc
+      f              <- stats::as.formula(paste0(yy, " ~ ", paste(keep2, collapse = " + ")))
+      m              <- .fit_model(dd, f, y_type, engine, FALSE, ...)
+      # Record the predictor column names actually used so tidy_model() can
+      # verify every coefficient is decodable by prep$term_map / prep$level_map.
+      attr(m, "besd_fitted_terms") <- keep2
+      fits_cc[[yy]] <- m
+      fits[[cc]]    <- fits_cc
     }
   }
   
   structure(
     list(
       fits = fits,
+      prep = prep,
+      # meta carries only fit-level facts. Everything else (level maps,
+      # reference codes, term map, dictionaries) lives in prep, which is the
+      # single source of truth for all metadata.
       meta = list(
-        scope             = "by_country",
-        engine            = prep$engine,
-        outcome           = prep$outcome,
-        outcomes          = prep$outcomes,
-        y_type            = prep$y_type,
-        predictors        = prep$preds_common,
-        country_col       = prep$country_col,
-        countries         = prep$countries,
-        ref_rule          = prep$ref_rule,
-        level_map         = prep$level_map,
-        ref_code_by_group = prep$ref_code_by_group,
-        dem_dict          = prep$dem_dict
+        scope    = "by_country",
+        engine   = prep$engine,
+        outcome  = prep$outcome,
+        outcomes = prep$outcomes,
+        y_type   = prep$y_type
       ),
       dict = prep$dict
     ),
@@ -206,9 +252,10 @@ besd_regress <- function(x,
   )
 }
 
-# Fit a single multilevel model across all countries. Encoding and dummy expansion
-# are already done; this function builds the mixed-effects formula, applies 
-# complete-case deletion globally, and dispatches to the engine.
+# Fit a single multilevel model across all countries. Encoding and dummy
+# expansion are already done in besd_prepare(); this function builds the
+# mixed-effects formula, applies complete-case deletion globally, and
+# dispatches to the engine.
 .fit_multilevel <- function(prep, ...) {
   df           <- prep$df
   outcomes     <- prep$outcomes
@@ -238,33 +285,25 @@ besd_regress <- function(x,
     dd   <- dd[stats::complete.cases(dd), , drop = FALSE]
     if (nrow(dd) == 0L) next
     
-    fits[[yy]] <- .fit_model(dd, f, y_type, engine, TRUE,
-                             do_complete_cases = FALSE, ...)
+    fits[[yy]] <- .fit_model(dd, f, y_type, engine, TRUE, ...)
+    # Record the fixed-effect predictor column names actually used so
+    # tidy_model() can verify every coefficient is decodable.
+    attr(fits[[yy]], "besd_fitted_terms") <- predictors_fixed
   }
   
   structure(
     list(
       fits = fits,
+      prep = prep,
+      # meta carries only fit-level facts. Everything else (level maps,
+      # reference codes, term map, dictionaries) lives in prep, which is the
+      # single source of truth for all metadata.
       meta = list(
-        scope                       = "multilevel",
-        engine                      = prep$engine,
-        outcome                     = prep$outcome,
-        outcomes                    = prep$outcomes,
-        y_type                      = prep$y_type,
-        predictors_common           = prep$preds_common,
-        predictors_context          = prep$preds_context,
-        country_col                 = prep$country_col,
-        ref_rule                    = prep$ref_rule,
-        random_slopes               = prep$random_slopes,
-        correlated_re               = prep$correlated_re,
-        ref_code_common             = prep$ref_code,
-        ref_code_by_group_context   = prep$ref_code_by_group_context,
-        level_map                   = prep$level_map,
-        level_map_context           = prep$level_map_context,
-        term_map                    = prep$term_map,
-        country_code_of             = prep$country_code_of,
-        dem_dict                    = prep$dem_dict,
-        uncorrelated_random_effects = prep$use_uncor
+        scope    = "multilevel",
+        engine   = prep$engine,
+        outcome  = prep$outcome,
+        outcomes = prep$outcomes,
+        y_type   = prep$y_type
       ),
       dict = prep$dict
     ),
@@ -272,54 +311,14 @@ besd_regress <- function(x,
   )
 }
 
-# Dispatch to the appropriate model fitter based on engine and y_type. Expects a 
-# pre-filtered data frame; do_complete_cases should be FALSE in normal use since 
-# callers handle deletion before this point.
-.fit_model <- function(dat, formula, y_type, engine, multilevel) {
-  
-  vars    <- all.vars(formula)
-  missing <- setdiff(vars, names(dat))
-  if (length(missing)) .stopf("Formula references missing: %s", .pastec(missing))
-  
-  dd <- dat[, unique(vars), drop = FALSE]
-  
-  if (engine == "frequentist") {
-    if (y_type == "binary") {
-      if (multilevel) {
-        .require_pkg("lme4", "for multilevel logistic regression")
-        return(lme4::glmer(formula, data = dd, family = stats::binomial(), ...))
-      }
-      return(stats::glm(formula, data = dd, family = stats::binomial(), ...))
-    }
-    if (y_type == "ordinal") {
-      .require_pkg("ordinal", "for ordinal regression")
-      if (multilevel) return(ordinal::clmm(formula, data = dd, link = "logit", ...))
-      return(ordinal::clm(formula, data = dd, link = "logit", ...))
-    }
-    .stopf("Unsupported y_type: %s", y_type)
-  }
-  
-  .require_pkg("brms", "for Bayesian regression")
-  if (y_type == "binary") {
-    pri <- c(brms::set_prior("normal(0, 1)", class = "b"),
-             brms::set_prior("student_t(3, 0, 2.5)", class = "Intercept"))
-    return(brms::brm(formula, data = dd,
-                     family = brms::bernoulli(link = "logit"),
-                     prior = pri, ...))
-  }
-  if (y_type == "ordinal") {
-    pri <- c(brms::set_prior("normal(0, 1)", class = "b"),
-             brms::set_prior("student_t(3, 0, 2.5)", class = "Intercept"))
-    return(brms::brm(formula, data = dd,
-                     family = brms::cumulative(link = "logit"),
-                     prior = pri, ...))
-  }
-  .stopf("Unsupported y_type: %s", y_type)
-}
 
-# ── expand multichoice BeSD helper ─────────────────────────────────────────────
+# ── Expand multichoice outcomes ─────────────────────────────────────────────────
+
+# Expand a packed multichoice column into one binary indicator column per level.
+# Returns a list with the augmented data frame (`df`) and the new column names
+# (`outcomes`) to be used as model outcomes.
 .expand_multichoice_outcome <- function(df, item, levels_std, sep = .BESD_SEP) {
-  x     <- as.character(df[[item]])
+  x         <- as.character(df[[item]])
   x[x == ""] <- NA_character_
   
   opt_codes <- .make_safe_names(levels_std, sep = "_")
