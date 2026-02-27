@@ -358,8 +358,24 @@ besd_recode_missing <- function(x,
                                warn_on_unknown   = TRUE) {
   
   unknown_action <- match.arg(unknown_action)
-  errors <- list()
   
+  if (unknown_action == "na") {
+    for (item in items) {
+      meta       <- dict[dict$item_id == item, , drop = FALSE]
+      miss_i     <- .besd_missing_tokens_for_item(missing_tokens, item)
+      df[[item]] <- .coerce_item(
+        df[[item]], meta,
+        multichoice_specs[[item]] %||% list(),
+        missing_tokens  = miss_i,
+        unknown_action  = "na",
+        warn_on_unknown = warn_on_unknown
+      )
+    }
+    return(df)
+  }
+  
+  # unknown_action == "error": run full loop collecting all problems first
+  errors <- list()
   for (item in items) {
     meta   <- dict[dict$item_id == item, , drop = FALSE]
     miss_i <- .besd_missing_tokens_for_item(missing_tokens, item)
@@ -381,7 +397,7 @@ besd_recode_missing <- function(x,
     )
   }
   
-  if (unknown_action == "error" && length(errors)) {
+  if (length(errors)) {
     lines <- vapply(names(errors), function(nm) {
       sprintf("  %s", errors[[nm]])
     }, character(1))
