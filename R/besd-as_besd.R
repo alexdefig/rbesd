@@ -412,7 +412,7 @@ besd_recode_missing <- function(x,
     # Unknown values: non-NA in input but still NA in x_rec after restoration.
     bad_idx <- !is.na(x_chr) & is.na(x_rec)
     bad     <- setdiff(unique(x_chr[bad_idx]), NA_character_)
-    .check_unknown(bad, unknown_action, warn_on_unknown)
+    .check_unknown(bad, unknown_action, warn_on_unknown, item = meta_row$item_id[[1]])
     if (length(bad) && unknown_action == "na") x_rec[bad_idx] <- NA_character_
     
     # Warn on dictionary levels absent from data (ignoring missing-token values).
@@ -443,7 +443,8 @@ besd_recode_missing <- function(x,
       sep             = sep,
       missing_tokens  = missing_tokens,
       unknown_action  = unknown_action,
-      warn_on_unknown = warn_on_unknown
+      warn_on_unknown = warn_on_unknown,
+      item            = meta_row$item_id[[1]]
     ))
   }
   
@@ -457,7 +458,8 @@ besd_recode_missing <- function(x,
                                        sep             = .BESD_SEP,
                                        missing_tokens  = NULL,
                                        unknown_action  = c("error", "na"),
-                                       warn_on_unknown = TRUE) {
+                                       warn_on_unknown = TRUE,
+                                       item            = NULL) {
   
   unknown_action <- match.arg(unknown_action)
   miss_keys <- .strip_non_alpnum(missing_tokens %||% character(0))
@@ -479,6 +481,7 @@ besd_recode_missing <- function(x,
   bad     <- setdiff(tokens_all, allowed)
   .check_unknown(
     bad, unknown_action, warn_on_unknown,
+    item     = item,
     err_fmt  = "Found multichoice token(s) not in dictionary levels: %s",
     warn_fmt = "Dropping %d unknown multichoice token(s): %s"
   )
@@ -616,12 +619,16 @@ besd_recode_missing <- function(x,
 # Emit an error or warning for unknown values; does not mutate anything.
 # Callers are responsible for setting unknown values to NA after this call.
 .check_unknown <- function(bad, unknown_action, warn_on_unknown,
+                           item     = NULL,
                            err_fmt  = "Found value(s) not in dictionary levels: %s",
                            warn_fmt = "Coercing %d unknown value(s) to NA: %s") {
   if (!length(bad)) return(invisible(NULL))
-  if (unknown_action == "error") .stopf(err_fmt, .pastec(sort(bad)))
+  prefix <- if (!is.null(item)) sprintf("[%s] ", item) else ""
+  if (unknown_action == "error")
+    .stopf(paste0(prefix, err_fmt), .pastec(sort(bad)))
   if (unknown_action == "na" && isTRUE(warn_on_unknown))
-    warning(sprintf(warn_fmt, length(bad), .pastec(sort(bad))), call. = FALSE)
+    warning(sprintf(paste0(prefix, warn_fmt), length(bad), .pastec(sort(bad))),
+            call. = FALSE)
 }
 
 # Warn when standard dictionary levels are absent from the observed data.
