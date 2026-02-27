@@ -349,30 +349,50 @@ besd_recode_missing <- function(x,
 # missing_tokens are allow-listed so they are not flagged as unknown values.
 # They are always retained as explicit trailing factor levels here; callers
 # that want them recoded to NA should call besd_recode_missing() afterwards.
-.coerce_dict_items <- function(df,
-                               dict,
-                               items,
-                               multichoice_specs = list(),
-                               missing_tokens    = NULL,
-                               unknown_action    = c("error", "na"),
-                               warn_on_unknown   = TRUE) {
-  
+.coerce_dict_items <- function(df, dict, items, multichoice_specs = list(),
+                               missing_tokens = NULL, unknown_action = c("error", "na"),
+                               warn_on_unknown = TRUE) {
   unknown_action <- match.arg(unknown_action)
+  errors <- list()
   
   for (item in items) {
     meta   <- dict[dict$item_id == item, , drop = FALSE]
     miss_i <- .besd_missing_tokens_for_item(missing_tokens, item)
-    df[[item]] <- .coerce_item(
-      df[[item]], meta,
-      multichoice_specs[[item]] %||% list(),
-      missing_tokens  = miss_i,
-      unknown_action  = unknown_action,
-      warn_on_unknown = warn_on_unknown
+    # When unknown_action = "error", pass "na" temporarily so coercion
+    # continues across all items. We collect the bad values here and
+    # stop once at the end with all problems listed together.
+    coerce_action <- if (unknown_action == "error") "na" else unknown_action
+    result <- tryCatch(
+      .coerce_item(
+        df[[item]], meta,
+        multichoice_specs[[item]] %||% list(),
+        missing_tokens  = miss_i,
+        unknown_action  = coerce_action,
+        warn_on_unknown = warn_on_unknown
+      ),
+      error = function(e) e
+    )
+    if (inherits(result, "error")) {
+      errors[[item]] <- conditionMessage(result)
+    } else {
+      df[[item]] <- result
+    }
+  }
+  
+  if (unknown_action == "error" && length(errors)) {
+    lines <- vapply(names(errors), function(nm) {
+      sprintf("  [%s] %s", nm, errors[[nm]])
+    }, character(1))
+    .stopf(
+      "Unknown value(s) found in %d column(s):\n%s",
+      length(errors),
+      paste(lines, collapse = "\n")
     )
   }
   
   df
 }
+
 
 
 # Coerce a single item vector to its dictionary type.
