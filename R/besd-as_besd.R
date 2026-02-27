@@ -389,7 +389,7 @@ besd_recode_missing <- function(x,
       ),
       warning = function(w) {
         msg <- conditionMessage(w)
-        if (grepl("not in dictionary|unknown.*token", msg, ignore.case = TRUE)) {
+        if (grepl("not in dictionary|unknown", msg, ignore.case = TRUE)) {
           errors[[item]] <<- msg
           invokeRestart("muffleWarning")
         }
