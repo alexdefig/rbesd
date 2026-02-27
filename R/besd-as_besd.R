@@ -401,9 +401,13 @@ besd_recode_missing <- function(x,
     lines <- vapply(names(errors), function(nm) {
       sprintf("  %s", errors[[nm]])
     }, character(1))
+    message(
+      "Unknown value(s) found in ", length(errors), " column(s):\n",
+      paste(lines, collapse = "\n")
+    )
     .stopf(
-      "Unknown value(s) found in %d column(s):\n%s",
-      length(errors), paste(lines, collapse = "\n")
+      "Found unknown values in %d column(s). See details above.",
+      length(errors)
     )
   }
   
@@ -657,7 +661,7 @@ besd_recode_missing <- function(x,
 .check_unknown <- function(bad, unknown_action, warn_on_unknown,
                            item     = NULL,
                            err_fmt  = "Found value(s) not in dictionary levels: %s",
-                           warn_fmt = "Coercing %d unknown value(s) to NA: %s") {
+                           warn_fmt = "Found %d unknown value(s) not in dictionary: %s") {
   if (!length(bad)) return(invisible(NULL))
   prefix <- if (!is.null(item)) sprintf("[%s] ", item) else ""
   if (unknown_action == "error")
