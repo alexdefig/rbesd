@@ -33,6 +33,9 @@ besd_regress(
 
 \item{random_slopes}{If TRUE (multilevel), fit random slopes for common predictors.}
 
+\item{correlated_re}{If TRUE (multilevel Bayes), estimate correlations between
+random effects.}
+
 \item{ref_levels}{Optional named list of explicit reference labels (multilevel
 common predictors only).}
 
@@ -67,5 +70,8 @@ recodes observations belonging to rare levels within a country to \code{NA} prio
 fitting, to avoid near-empty cells in the model matrix. These observations are then
 excluded by complete-case deletion. Reduce this threshold only if you are confident
 small cells will not cause convergence problems.
+
+After examining missing data with \code{\link[=besd_missing_summary]{besd_missing_summary()}} consider manually
+recoding rare levels before calling \code{\link[=as_besd]{as_besd()}}.
 }
 

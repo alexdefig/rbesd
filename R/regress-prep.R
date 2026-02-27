@@ -52,6 +52,14 @@ besd_prepare <- function(x,
   dict        <- info$besd_dict
   country_col <- info$country_col
   
+  # ── Guard: un-recoded missing tokens ────────────────────────────────────────
+  # If missing_action = "keep" was used in as_besd(), missing-response tokens
+  # (e.g. "Don't know") remain as trailing factor levels rather than NA.
+  # These must be recoded before fitting or they will be passed to the model
+  # as real response categories. We detect this by checking whether any factor
+  # column involved in the model has levels beyond those in the dictionary.
+  .check_no_missing_token_levels(df, outcome, predictors, dict, info$meta)
+  
   # ── Expand multichoice outcomes ─────────────────────────────────────────────
   y_type   <- .item_type(dict, outcome)
   outcomes <- outcome
@@ -438,6 +446,70 @@ besd_prepare <- function(x,
     for (nm in added_ctx) out[[nm]] <- ctx_term_map[[nm]]
   }
   out
+}
+
+
+# ── Missing-token level guard ──────────────────────────────────────────────────
+
+# Stop if any outcome or predictor column still carries factor levels that are
+# not in the dictionary — the signature of missing_action = "keep" having been
+# left in place before fitting. These extra levels are missing-response tokens
+# (e.g. "Don't know") that would be passed to the model as real categories.
+#
+# Detection: a factor column whose levels include anything not in dict$levels
+# for that item. Only checks columns that are in the dictionary; dem predictors
+# not in besd_dict are looked up in dem_dict if present.
+.check_no_missing_token_levels <- function(df, outcome, predictors, dict,
+                                           meta = NULL) {
+  all_preds <- if (is.list(predictors)) {
+    unique(c(predictors$common %||% character(), predictors$context %||% character()))
+  } else {
+    as.character(predictors)
+  }
+  
+  cols_to_check <- unique(c(outcome, all_preds))
+  cols_to_check <- intersect(cols_to_check, names(df))
+  
+  # Build a combined name -> dict_levels lookup from both dicts
+  dict_levels <- stats::setNames(dict$levels, dict$item_id)
+  
+  bad <- character()
+  for (col in cols_to_check) {
+    v <- df[[col]]
+    if (!is.factor(v) || is.ordered(v)) next
+    expected <- dict_levels[[col]]
+    if (is.null(expected)) next          # not in dict — skip
+    extra <- setdiff(levels(v), expected)
+    if (length(extra)) bad <- c(bad, col)
+  }
+  
+  if (!length(bad)) return(invisible(NULL))
+  
+  # Build a helpful hint from meta$missing_tokens if available
+  tokens <- meta$missing_tokens %||% NULL
+  token_hint <- if (!is.null(tokens)) {
+    toks <- if (is.character(tokens)) tokens else unlist(tokens, use.names = FALSE)
+    toks <- unique(toks[!is.na(toks) & nzchar(toks)])
+    if (length(toks)) {
+      paste0(
+        " Missing tokens detected: ",
+        paste(paste0('"', toks, '"'), collapse = ", "), "."
+      )
+    } else ""
+  } else ""
+  
+  .stopf(
+    paste0(
+      "Column(s) %s still contain factor levels outside the dictionary. ",
+      "This usually means `missing_action = \"keep\"` was used in `as_besd()` ",
+      "and missing-response tokens have not been recoded to NA.",
+      "%s",
+      " Call `besd_recode_missing()` before fitting, or use ",
+      "`missing_action = \"na\"` in `as_besd()`."
+    ),
+    .pastec(bad),
+    token_hint
+  )
 }
 
 

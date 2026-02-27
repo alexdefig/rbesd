@@ -29,7 +29,7 @@ the proportion of rows that \code{complete.cases()} would drop across all variab
 together — the number that actually matters for complete-case regression.
 }
 \details{
-Call this after preparing your \code{besd_data} object but before \code{besd_regress()},
+Call this after preparing your \code{besd_data} object but before \code{\link[=besd_regress]{besd_regress()}},
 optionally re-running after applying \code{min_n_context} manually to see its impact on
 the joint fraction.
 }
