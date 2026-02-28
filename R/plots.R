@@ -158,7 +158,6 @@ besd_theme <- function(base_size = 12) {
 # ---- Top-box selection ------------------------------------------------------
 
 #' Heuristic for selecting "top-box" responses
-#' @export
 besd_guess_topbox_levels <- function(responses,
                                      prefer_regex = c(
                                        "^Yes$",
@@ -184,7 +183,6 @@ besd_guess_topbox_levels <- function(responses,
 }
 
 #' Build a top-box tibble from a BeSD summary tibble
-#' @export
 besd_topbox <- function(sum_tbl,
                         topbox_levels = NULL,
                         prefer_regex = c(

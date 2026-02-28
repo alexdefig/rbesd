@@ -21,7 +21,7 @@ besd_regress(
 \arguments{
 \item{x}{A \code{besd_data} object.}
 
-\item{outcome}{Single BeSD \code{item_id}.}
+\item{outcome}{One or more BeSD \code{item_id}s.}
 
 \item{predictors}{Character vector (by_country) or list(common, context) (multilevel).}
 

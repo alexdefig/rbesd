@@ -3,7 +3,7 @@
 #' Regression modelling for BeSD outcomes
 #'
 #' @param x A `besd_data` object.
-#' @param outcome Single BeSD `item_id`.
+#' @param outcome One or more BeSD `item_id` strings.
 #' @param predictors Character vector (by_country) or list(common, context) (multilevel).
 #' @param scope "by_country" or "multilevel".
 #' @param engine "frequentist" or "bayes".
@@ -61,9 +61,10 @@ besd_regress <- function(x,
   ref    <- match.arg(ref)
   
   # Validate outcome before passing to besd_prepare() to give a clear error.
-  if (!is.character(outcome) || length(outcome) != 1L || is.na(outcome) ||
-      !nzchar(outcome) || !(outcome %in% info$besd_items)) {
-    .stopf("`outcome` must be a single non-empty BeSD `item_id` string.")
+  if (!is.character(outcome) || length(outcome) == 0L ||
+      any(is.na(outcome)) || any(!nzchar(outcome)) ||
+      any(!outcome %in% info$besd_items)) {
+    .stopf("`outcome` must be a non-empty character vector of BeSD `item_id` strings.")
   }
   
   # Warn if the object carries a weight column — it is not used in regression.
@@ -83,7 +84,6 @@ besd_regress <- function(x,
   
   prep <- besd_prepare(
     x,
-    outcome       = outcome,
     predictors    = predictors,
     scope         = scope,
     engine        = engine,
@@ -94,11 +94,87 @@ besd_regress <- function(x,
     min_n_context = min_n_context
   )
   
-  if (scope == "by_country") {
-    .fit_by_country(prep, ...)
-  } else {
-    .fit_multilevel(prep, ...)
+  dict     <- info$besd_dict
+  log_rows <- list()
+  fits_all <- list()
+  n        <- length(outcome)
+  
+  # Fit model for each outcome
+  for (i in seq_along(outcome)) {
+    yy <- outcome[[i]]
+    message(sprintf("Fitting outcome %d/%d: %s", i, n, yy))
+    t0 <- proc.time()[["elapsed"]]
+    
+    result <- tryCatch({
+      
+      # Missing token guard for this outcome
+      .check_no_missing_token_levels(prep$df, yy, NULL, dict, info$meta)
+      
+      # Resolve y_type and expand multichoice on a local copy of df
+      y_type   <- .item_type(dict, yy)
+      df_y     <- prep$df
+      outcomes <- yy
+      if (y_type == "multichoice") {
+        levs     <- dict$levels[[match(yy, dict$item_id)]]
+        ex       <- .expand_multichoice_outcome(df_y, yy, levs, sep = .BESD_SEP)
+        df_y     <- ex$df
+        outcomes <- ex$outcomes
+        y_type   <- "binary"
+      }
+      
+      # Warn on joint missingness for this outcome + common predictors
+      .warn_missingness(df_y,
+                        vars        = c(outcomes, prep$preds_common),
+                        country_col = prep$country_col,
+                        threshold   = 0.05,
+                        context     = prep$scope)
+      
+      # Augment prep with outcome-specific fields for the fitting functions
+      prep_y          <- prep
+      prep_y$df       <- df_y
+      prep_y$outcome  <- yy
+      prep_y$outcomes <- outcomes
+      prep_y$y_type   <- y_type
+      
+      fit <- if (scope == "by_country") {
+        .fit_by_country(prep_y, ...)
+      } else {
+        .fit_multilevel(prep_y, ...)
+      }
+      
+      list(fit = fit, error = NULL)
+      
+    }, error = function(e) {
+      list(fit = NULL, error = conditionMessage(e))
+    })
+    
+    elapsed <- round(proc.time()[["elapsed"]] - t0, 1)
+    log_rows[[yy]] <- tibble::tibble(
+      outcome   = yy,
+      status    = if (is.null(result$error)) "success" else "failed",
+      runtime_s = elapsed,
+      error     = result$error %||% NA_character_
+    )
+    
+    if (!is.null(result$fit)) fits_all[[yy]] <- result$fit
   }
+  
+  log    <- dplyr::bind_rows(log_rows)
+  n_fail <- sum(log$status == "failed")
+  if (n_fail > 0L)
+    message(sprintf("%d outcome(s) failed. Inspect $log for details.", n_fail))
+  
+  # Single outcome success: return the fit directly with log attached
+  if (length(outcome) == 1L && length(fits_all) == 1L) {
+    out     <- fits_all[[1L]]
+    out$log <- log
+    return(out)
+  }
+  
+  structure(
+    list(fits = fits_all, log = log, prep = prep),
+    class = "besd_regress_multi"
+  )
 }
 
 
@@ -335,4 +411,17 @@ besd_regress <- function(x,
   
   df2 <- cbind(df, as.data.frame(mat, stringsAsFactors = FALSE))
   list(df = df2, outcomes = out_names)
+}
+
+
+# ── Expand multichoice outcomes ─────────────────────────────────────────────────
+
+# Print multi besd regress
+#' @export
+print.besd_regress_multi <- function(x, ...) {
+  n_ok   <- sum(x$log$status == "success")
+  n_fail <- sum(x$log$status == "failed")
+  cat(sprintf("<besd_regress_multi>  %d fitted, %d failed\n", n_ok, n_fail))
+  print(x$log)
+  invisible(x)
 }

@@ -38,8 +38,8 @@
 summary.besd_data <- function(object, 
                               items = NULL, 
                               conf_level = 0.95,
-                              include_demographics = FALSE, 
-                              exclude_missing_tokens = TRUE,
+                              include_demographics = TRUE, 
+                              exclude_missing_tokens = FALSE,
                               ci_method = c("dirichlet", "none"), 
                               ci_prior = 0.5,
                               ...) {
@@ -144,7 +144,7 @@ summary.besd_data <- function(object,
 #'
 #' @return A tibble of demographic summaries, or `NULL` if not present.
 #' @export
-besd_demographics <- function(x) {
+besd_summary_demographics <- function(x) {
   attr(x, "demographics")
 }
 

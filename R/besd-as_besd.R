@@ -645,7 +645,7 @@ besd_recode_missing <- function(x,
 
 
 # Build a named lookup from dictionary levels to normalised alphanumeric keys
-# for fuzzy response matching. Errors if two levels normalise identically.
+# for response matching. Errors if two levels normalise identically.
 .level_map <- function(levels_std) {
   keys <- .strip_non_alpnum(levels_std)
   if (anyDuplicated(keys)) {
@@ -677,7 +677,10 @@ besd_recode_missing <- function(x,
 .warn_absent_levels <- function(levels_std, observed, miss_keys, warn_msg) {
   std_only    <- observed[!is.na(observed) &
                             !(.strip_non_alpnum(observed) %in% miss_keys)]
-  missing_std <- setdiff(levels_std, std_only)
+  # Exclude dictionary levels that are themselves missing tokens — these are
+  # legitimately absent after recoding and should not be flagged.
+  levels_check <- levels_std[!(.strip_non_alpnum(levels_std) %in% miss_keys)]
+  missing_std  <- setdiff(levels_check, std_only)
   if (length(missing_std))
     warning(sprintf(warn_msg, paste(missing_std, collapse = ", ")), call. = FALSE)
 }

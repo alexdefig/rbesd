@@ -8,8 +8,8 @@
   object,
   items = NULL,
   conf_level = 0.95,
-  include_demographics = FALSE,
-  exclude_missing_tokens = TRUE,
+  include_demographics = TRUE,
+  exclude_missing_tokens = FALSE,
   ci_method = c("dirichlet", "none"),
   ci_prior = 0.5,
   ...

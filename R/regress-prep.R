@@ -9,7 +9,6 @@
 #' fitting.
 #'
 #' @param x A `besd_data` object.
-#' @param outcome Single BeSD `item_id`.
 #' @param predictors Character vector (`by_country`) or
 #'   `list(common = ..., context = ...)` (`multilevel`).
 #' @param scope `"by_country"` or `"multilevel"`.
@@ -31,7 +30,6 @@
 #'   fitting and tidying.
 #' @export
 besd_prepare <- function(x,
-                         outcome,
                          predictors,
                          scope         = c("by_country", "multilevel"),
                          engine        = c("frequentist", "bayes"),
@@ -51,25 +49,7 @@ besd_prepare <- function(x,
   df          <- dplyr::as_tibble(x)
   dict        <- info$besd_dict
   country_col <- info$country_col
-  
-  # ── Guard: un-recoded missing tokens ────────────────────────────────────────
-  # If missing_action = "keep" was used in as_besd(), missing-response tokens
-  # (e.g. "Don't know") remain as trailing factor levels rather than NA.
-  # These must be recoded before fitting or they will be passed to the model
-  # as real response categories. We detect this by checking whether any factor
-  # column involved in the model has levels beyond those in the dictionary.
-  .check_no_missing_token_levels(df, outcome, predictors, dict, info$meta)
-  
-  # ── Expand multichoice outcomes ─────────────────────────────────────────────
-  y_type   <- .item_type(dict, outcome)
-  outcomes <- outcome
-  if (y_type == "multichoice") {
-    levs     <- dict$levels[[match(outcome, dict$item_id)]]
-    ex       <- .expand_multichoice_outcome(df, outcome, levs, sep = .BESD_SEP)
-    df       <- ex$df
-    outcomes <- ex$outcomes
-    y_type   <- "binary"
-  }
+
   
   # ── Normalise predictors ────────────────────────────────────────────────────
   if (scope == "by_country") {
@@ -97,7 +77,7 @@ besd_prepare <- function(x,
     df <- prep_preds$df
     
     .warn_missingness(df,
-                      vars        = c(outcomes, preds_common),
+                      vars        = preds_common,
                       country_col = country_col,
                       threshold   = 0.05,
                       context     = "by_country")
@@ -168,13 +148,13 @@ besd_prepare <- function(x,
       }
     }
     
-    # Warn on joint missingness across outcome + common predictors only.
+    # Warn on joint missingness across common predictors only.
     # Context predictors are intentionally excluded: their NAs are converted to
     # 0s in the dummy columns above and do NOT cause listwise deletion. A
     # country where a context predictor is entirely missing is expected and
     # normal — those rows simply contribute without that predictor.
     .warn_missingness(df,
-                      vars        = c(outcomes, preds_common),
+                      vars        = preds_common,
                       country_col = country_col,
                       threshold   = 0.05,
                       context     = "multilevel")
@@ -201,8 +181,6 @@ besd_prepare <- function(x,
     list(
       # Prepared data
       df                        = df,
-      outcomes                  = outcomes,
-      y_type                    = y_type,
       # Predictor names
       preds_common              = preds_common,
       preds_context             = preds_context,
@@ -220,7 +198,6 @@ besd_prepare <- function(x,
       # Configuration
       scope                     = scope,
       engine                    = engine,
-      outcome                   = outcome,
       country_col               = country_col,
       ref_rule                  = ref,
       random_slopes             = random_slopes,

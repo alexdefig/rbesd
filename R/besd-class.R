@@ -334,7 +334,7 @@ print.besd_data <- function(x, ...) {
   cat("<besd_data>\n")
   cat(sprintf("- Rows: %s\n", format(nrow(x), big.mark = ",")))
   cat(sprintf("- Countries: %s\n", n_countries))
-  cat(sprintf("- BeSD items present: %s\n", n_besd))
+  cat(sprintf("- BeSD items present: %s (out of %s)\n", n_besd, nrow(info$besd_dict)))
   cat(sprintf("- Predictor items present: %s\n", n_dem))
   cat(sprintf("- Weight column: %s\n", w_col))
   cat(sprintf("- ID column: %s\n", i_col))
@@ -384,7 +384,7 @@ print.besd_summary_tbl <- function(x, ...) {
   dem <- attr(x, "demographics")
   if (!is.null(dem) && nrow(dem)) {
     cat(
-      "\n(demographics available via `besd_demographics(x)` or ",
+      "\n(demographics available via `besd_summary_demographics(x)` or ",
       "`attr(x, 'demographics')`)\n",
       sep = ""
     )
