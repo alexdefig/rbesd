@@ -379,11 +379,11 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
     se_mat <- NULL
     if (!is.null(pv)) {
       if (length(dim(pv)) == 3) {
-        se_mat <- t(vapply(
-          seq_len(dim(pv)[3]),
-          function(k) .safe_sqrt(diag(pv[, , k, drop = FALSE])),
-          numeric(ncol(df_re))
-        ))
+        se_mat <- matrix(NA_real_, nrow = nrow(df_re), ncol = ncol(df_re))
+        for (k in seq_len(dim(pv)[3])) {
+          m <- matrix(pv[, , k], nrow = dim(pv)[1], ncol = dim(pv)[2])
+          se_mat[k, ] <- .safe_sqrt(diag(m))
+        }
       } else if (all(dim(as.matrix(pv)) == dim(as.matrix(df_re)))) {
         se_mat <- matrix(.safe_sqrt(as.matrix(pv)), 
                          nrow = nrow(df_re), ncol = ncol(df_re))
