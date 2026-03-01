@@ -100,7 +100,13 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
       if (is_by_country) {
         td$country <- ifelse(is.na(td$country) | td$country == "", cc, td$country)
       }
-      td$outcome <- yy
+      
+      mc_map  <- prep$mc_label_map %||% list()
+      mc_item <- sub("_mc_.*$", "", yy)   # e.g. "pr_reasons_ease_access"
+      mc_lev  <- mc_map[[yy]] %||% NA_character_   # e.g. "Nothing, it's not hard"
+      
+      td$outcome <- if (!is.na(mc_lev)) mc_item else yy
+      if (!is.na(mc_lev)) td$mc_response <- mc_lev else td$mc_response <- NA_character_
       rows[[length(rows) + 1]] <- td
     }
   }
@@ -118,7 +124,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   }
   
   out <- dplyr::select(
-    out, outcome, variable, level, country,
+    out, outcome, mc_response, variable, level, country,
     estimate, std.error, lower, upper, rhat, ess, effect_type, param_type
   )
   
@@ -796,6 +802,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 .empty_tidy <- function(include_baseline = FALSE) {
   tb <- tibble::tibble(
     outcome     = character(),
+    mc_response = character(),
     variable    = character(),
     level       = character(),
     country     = character(),

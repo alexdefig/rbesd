@@ -114,12 +114,14 @@ besd_regress <- function(x,
       y_type   <- .item_type(dict, yy)
       df_y     <- prep$df
       outcomes <- yy
+      mc_label_map <- list()
       if (y_type == "multichoice") {
         levs     <- dict$levels[[match(yy, dict$item_id)]]
         ex       <- .expand_multichoice_outcome(df_y, yy, levs, sep = .BESD_SEP)
         df_y     <- ex$df
         outcomes <- ex$outcomes
         y_type   <- "binary"
+        mc_label_map <- ex$mc_label_map
       }
       
       # Warn on joint missingness for this outcome + common predictors
@@ -135,6 +137,7 @@ besd_regress <- function(x,
       prep_y$outcome  <- yy
       prep_y$outcomes <- outcomes
       prep_y$y_type   <- y_type
+      prep_y$mc_label_map <- mc_label_map
       
       fit <- if (scope == "by_country") {
         .fit_by_country(prep_y, ...)
@@ -278,7 +281,17 @@ besd_regress <- function(x,
       
       y <- dd[[yy]]
       if ((is.factor(y) && nlevels(y) < 2L) ||
-          (!is.factor(y) && length(unique(y)) < 2L)) next
+          (!is.factor(y) && length(unique(y)) < 2L)) {
+        mc_label <- prep$mc_label_map[[yy]] %||% yy
+        warning(sprintf(
+          paste0(
+            "[%s / %s] Skipped: outcome has no variance (all values identical)", 
+            "after complete-case deletion.",  
+          ),
+          cc, mc_label
+        ), call. = FALSE)
+        next
+      }
       
       keep2 <- keep1[vapply(keep1, function(p) {
         v <- dd[[p]]
@@ -295,11 +308,26 @@ besd_regress <- function(x,
                                  warned = warned_refs)
         y  <- dd[[yy]]
         if ((is.factor(y) && nlevels(y) < 2L) ||
-            (!is.factor(y) && length(unique(y)) < 2L)) next
+            (!is.factor(y) && length(unique(y)) < 2L)) {
+          mc_label <- prep$mc_label_map[[yy]] %||% yy
+          warning(sprintf(
+            "[%s / %s] Skipped: outcome has no variance after predictor trimming.",
+            cc, mc_label
+          ), call. = FALSE)
+          next
+        }
       }
       
-      f              <- stats::as.formula(paste0(yy, " ~ ", paste(keep2, collapse = " + ")))
-      m              <- .fit_model(dd, f, y_type, engine, FALSE, ...)
+      f <- stats::as.formula(paste0(yy, " ~ ", paste(keep2, collapse = " + ")))
+      m <- withCallingHandlers(
+        .fit_model(dd, f, y_type, engine, FALSE, ...),
+        warning = function(w) {
+          mc_label <- (prep$mc_label_map %||% list())[[yy]] %||% yy
+          warning(sprintf("[%s / %s] %s", cc, mc_label, conditionMessage(w)), call. = FALSE)
+          invokeRestart("muffleWarning")
+        }
+      )
+      
       # Record the predictor column names actually used so tidy_model() can
       # verify every coefficient is decodable by prep$term_map / prep$level_map.
       attr(m, "besd_fitted_terms") <- keep2
@@ -410,7 +438,9 @@ besd_regress <- function(x,
   names(mat) <- out_names
   
   df2 <- cbind(df, as.data.frame(mat, stringsAsFactors = FALSE))
-  list(df = df2, outcomes = out_names)
+  # after
+  list(df = df2, outcomes = out_names, 
+       mc_label_map = stats::setNames(levels_std, out_names))
 }
 
 
