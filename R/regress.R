@@ -114,14 +114,14 @@ besd_regress <- function(x,
       y_type   <- .item_type(dict, yy)
       df_y     <- prep$df
       outcomes <- yy
-      mc_label_map <- list()
+      outcome_label_map <- list()
       if (y_type == "multichoice") {
         levs     <- dict$levels[[match(yy, dict$item_id)]]
         ex       <- .expand_multichoice_outcome(df_y, yy, levs, sep = .BESD_SEP)
         df_y     <- ex$df
         outcomes <- ex$outcomes
         y_type   <- "binary"
-        mc_label_map <- ex$mc_label_map
+        outcome_label_map <- ex$outcome_label_map
       }
       
       # Warn on joint missingness for this outcome + common predictors
@@ -137,7 +137,7 @@ besd_regress <- function(x,
       prep_y$outcome  <- yy
       prep_y$outcomes <- outcomes
       prep_y$y_type   <- y_type
-      prep_y$mc_label_map <- mc_label_map
+      prep_y$outcome_label_map <- outcome_label_map
       
       fit <- if (scope == "by_country") {
         .fit_by_country(prep_y, ...)
@@ -282,13 +282,13 @@ besd_regress <- function(x,
       y <- dd[[yy]]
       if ((is.factor(y) && nlevels(y) < 2L) ||
           (!is.factor(y) && length(unique(y)) < 2L)) {
-        mc_label <- prep$mc_label_map[[yy]] %||% yy
+        outcome_label <- prep$outcome_label_map[[yy]] %||% yy
         warning(sprintf(
           paste0(
             "[%s / %s] Skipped: outcome has no variance (all values identical)", 
             "after complete-case deletion.",  
           ),
-          cc, mc_label
+          cc, outcome_label
         ), call. = FALSE)
         next
       }
@@ -309,10 +309,10 @@ besd_regress <- function(x,
         y  <- dd[[yy]]
         if ((is.factor(y) && nlevels(y) < 2L) ||
             (!is.factor(y) && length(unique(y)) < 2L)) {
-          mc_label <- prep$mc_label_map[[yy]] %||% yy
+          outcome_label <- prep$outcome_label_map[[yy]] %||% yy
           warning(sprintf(
             "[%s / %s] Skipped: outcome has no variance after predictor trimming.",
-            cc, mc_label
+            cc, outcome_label
           ), call. = FALSE)
           next
         }
@@ -322,8 +322,9 @@ besd_regress <- function(x,
       m <- withCallingHandlers(
         .fit_model(dd, f, y_type, engine, FALSE, ...),
         warning = function(w) {
-          mc_label <- (prep$mc_label_map %||% list())[[yy]] %||% yy
-          warning(sprintf("[%s / %s] %s", cc, mc_label, conditionMessage(w)), call. = FALSE)
+          outcome_label <- (prep$outcome_label_map %||% list())[[yy]] %||% yy
+          warning(sprintf("[%s / %s] %s", cc, outcome_label, conditionMessage(w)), 
+                  call. = FALSE)
           invokeRestart("muffleWarning")
         }
       )
@@ -389,10 +390,26 @@ besd_regress <- function(x,
     dd   <- dd[stats::complete.cases(dd), , drop = FALSE]
     if (nrow(dd) == 0L) next
     
-    fits[[yy]] <- .fit_model(dd, f, y_type, engine, TRUE, ...)
-    # Record the fixed-effect predictor column names actually used so
-    # tidy_model() can verify every coefficient is decodable.
-    attr(fits[[yy]], "besd_fitted_terms") <- predictors_fixed
+    m <- tryCatch(
+      withCallingHandlers(
+        .fit_model(dd, f, y_type, engine, TRUE, ...),
+        warning = function(w) {
+          outcome_label <- (prep$outcome_label_map %||% list())[[yy]] %||% yy
+          warning(sprintf("[multilevel / %s] %s", outcome_label, conditionMessage(w)),
+                  call. = FALSE)
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) {
+        outcome_label <- (prep$outcome_label_map %||% list())[[yy]] %||% yy
+        warning(sprintf("[multilevel / %s] Skipped: %s", outcome_label, conditionMessage(e)),
+                call. = FALSE)
+        NULL
+      }
+    )
+    if (is.null(m)) next
+    attr(m, "besd_fitted_terms") <- predictors_fixed
+    fits[[yy]] <- m
   }
   
   structure(
@@ -440,7 +457,7 @@ besd_regress <- function(x,
   df2 <- cbind(df, as.data.frame(mat, stringsAsFactors = FALSE))
   # after
   list(df = df2, outcomes = out_names, 
-       mc_label_map = stats::setNames(levels_std, out_names))
+       outcome_label_map = stats::setNames(levels_std, out_names))
 }
 
 
