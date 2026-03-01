@@ -94,19 +94,14 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
       if (is.null(m)) next
       
       td <- .tidy_one_model(model = m, conf_level = conf_level,
-                            include_random = include_random, prep = prep)
+                            include_random = include_random, prep = prep, 
+                            outcome_col = yy)
       if (!nrow(td)) next
       
       if (is_by_country) {
         td$country <- ifelse(is.na(td$country) | td$country == "", cc, td$country)
       }
-      
-      mc_map  <- prep$mc_label_map %||% list()
-      mc_item <- sub("_mc_.*$", "", yy)   # e.g. "pr_reasons_ease_access"
-      mc_lev  <- mc_map[[yy]] %||% NA_character_   # e.g. "Nothing, it's not hard"
-      
-      td$outcome <- if (!is.na(mc_lev)) mc_item else yy
-      if (!is.na(mc_lev)) td$mc_response <- mc_lev else td$mc_response <- NA_character_
+
       rows[[length(rows) + 1]] <- td
     }
   }
@@ -124,7 +119,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   }
   
   out <- dplyr::select(
-    out, outcome, mc_response, variable, level, country,
+    out, outcome, item, variable, level, country,
     estimate, std.error, lower, upper, rhat, ess, effect_type, param_type
   )
   
@@ -143,22 +138,24 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 # ── Orchestrator ───────────────────────────────────────────────────────────────
 
 # Orchestrate fixed + random tidying for one model object. Dispatch is by
-# model class inside .backend_fixed() and .backend_re(); engine is not needed.
-#
-# When besd_fitted_terms is present on the model (set by .fit_by_country() and
-# .fit_multilevel()), we pre-build a complete coefficient->label lookup from
-# prep and attach it as prep$coef_lookup. This means .parse_terms() and
-# .coef_var_level() do a direct dict lookup rather than runtime heuristic
-# decoding, and no backend signatures need to change.
-.tidy_one_model <- function(model, conf_level, include_random, prep) {
+# model class inside .backend_fixed() and .backend_re();
+.tidy_one_model <- function(model, conf_level, include_random, prep, outcome_col) {
   fitted_terms <- attr(model, "besd_fitted_terms")
   if (!is.null(fitted_terms)) {
     prep$coef_lookup <- .build_coef_lookup(prep, fitted_terms)
   }
   out <- .backend_fixed(model, conf_level, prep)
   .warn_undecoded_terms(out, model)
-  if (!isTRUE(include_random)) return(out)
-  dplyr::bind_rows(out, .backend_re(model, conf_level, prep))
+  if (isTRUE(include_random)) {
+    out <- dplyr::bind_rows(out, .backend_re(model, conf_level, prep))
+  }
+  
+  mc_map  <- prep$mc_label_map %||% list()
+  mc_lev  <- mc_map[[outcome_col]] %||% NA_character_
+  base_id <- if (!is.na(mc_lev)) sub("_mc_.*$", "", outcome_col) else outcome_col
+  out$outcome <- base_id
+  out$item    <- if (!is.na(mc_lev)) mc_lev else .outcome_item_label(base_id, prep$dict)
+  out
 }
 
 
@@ -673,6 +670,20 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   paste0(toupper(substr(x, 1, 1)), substr(x, 2, nchar(x)))
 }
 
+# Resolve a BeSD outcome item_id to its question_short label.
+# Falls back to the item_id itself if not found in the dict.
+.outcome_item_label <- function(item_id, dict = NULL) {
+  if (!is.null(dict) && is.data.frame(dict) &&
+      all(c("item_id", "question") %in% names(dict))) {
+    j <- match(item_id, dict[["item_id"]])
+    if (!is.na(j)) {
+      val <- dict[["question"]][[j]]
+      if (!is.na(val) && nzchar(val)) return(val)
+    }
+  }
+  item_id
+}
+
 # Safe square root that clamps negative values to zero. Used when extracting
 # SDs from variance-covariance matrices that may have tiny negative diagonals
 # due to numerical imprecision.
@@ -802,7 +813,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 .empty_tidy <- function(include_baseline = FALSE) {
   tb <- tibble::tibble(
     outcome     = character(),
-    mc_response = character(),
+    item        = character(),
     variable    = character(),
     level       = character(),
     country     = character(),
@@ -833,7 +844,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 
 
 # ── Baseline helpers ───────────────────────────────────────────────────────────
-
+# Initialise empty table for baselines
 .empty_baseline_tbl <- function() {
   tibble::tibble(
     variable_id   = character(),
