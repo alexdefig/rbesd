@@ -26,11 +26,11 @@ Imports:
     stats,
     utils,
     broom (>= 1.0.0),
-    scales (>= 1.3.0)
+    scales (>= 1.3.0),
+    lme4,
+    ordinal
 Suggests:
     survey,
-    lme4,
-    ordinal,
     brms,
     knitr,
     rmarkdown,

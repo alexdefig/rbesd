@@ -71,7 +71,8 @@ besd_prepare <- function(x,
     prep_preds <- .prep_predictors(df, preds_common,
                                    group_col = country_col,
                                    min_n     = 5L,
-                                   ref_rule  = ref)
+                                   ref_rule  = ref, 
+                                   global_ref = TRUE)
     df <- prep_preds$df
     
     .warn_missingness(df,
@@ -161,7 +162,7 @@ besd_prepare <- function(x,
 # Returns a list: `df` (modified), `level_map`, `ref_code` (ungrouped), and
 # `ref_code_by_group` (per-group, when `group_col` is set).
 .prep_predictors <- function(df, predictors, group_col = NULL, min_n = 0L,
-                             ref_rule = "mode") {
+                             ref_rule = "mode", global_ref = FALSE) {
   .assert_has_cols(df, predictors, "df")
   if (!is.null(group_col)) .assert_has_cols(df, group_col, "df")
   
@@ -222,14 +223,21 @@ besd_prepare <- function(x,
       if (!is.null(grp)) {
         lab  <- label_of[as.character(v)]
         refs <- stats::setNames(rep(NA_character_, length(groups)), groups)
-        for (g in groups) {
-          ii        <- which(grp == g)
-          ref_label <- .pick_ref(lab[ii], ref_rule, levels = levs)
-          if (is.na(ref_label)) {
-            refs[g] <- NA_character_
-          } else {
-            ref0    <- unname(code_of[ref_label])
-            refs[g] <- if (!is.na(ref0)) ref0 else NA_character_
+        if (isTRUE(global_ref)) {
+          # Common predictors: pick reference from full dataset, broadcast
+          ref_label <- .pick_ref(lab, ref_rule, levels = levs)
+          ref0      <- if (!is.na(ref_label)) unname(code_of[ref_label]) else NA_character_
+          refs[]    <- ref0
+        } else {
+          for (g in groups) {
+            ii        <- which(grp == g)
+            ref_label <- .pick_ref(lab[ii], ref_rule, levels = levs)
+            if (is.na(ref_label)) {
+              refs[g] <- NA_character_
+            } else {
+              ref0    <- unname(code_of[ref_label])
+              refs[g] <- if (!is.na(ref0)) ref0 else NA_character_
+            }
           }
         }
         ref_code_by_group[[nm]] <- refs
@@ -242,7 +250,7 @@ besd_prepare <- function(x,
     df[[nm]] <- v
   }
   
-  list(df = df, level_map = level_map,
+  list(df = df, level_map = level_map, 
        ref_code_by_group = ref_code_by_group,
        ref_code = ref_code)
 }

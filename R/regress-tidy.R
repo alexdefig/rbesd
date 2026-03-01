@@ -578,8 +578,10 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
       return(list(variable = "(Intercept)", level = NA_character_,
                   country = NA_character_, param_type = "intercept"))
     }
-    if (grepl("^Intercept\\[[0-9]+\\]$", tm) || grepl("^[0-9]+\\|[0-9]+$", tm)) {
-      return(list(variable = NA_character_, level = NA_character_,
+    if (grepl("^Intercept\\[[0-9]+\\]$", tm) ||
+        grepl("^[0-9]+\\|[0-9]+$", tm) ||
+        grepl("^.+\\|.+$", tm)) {
+      return(list(variable = "(Cutpoint)", level = tm,
                   country = NA_character_, param_type = "cutpoint"))
     }
     lookup[[tm]] %||% list(variable = NA_character_, level = NA_character_,
