@@ -321,7 +321,31 @@ modify_dictionary <- function(df = NULL,
 }
 
 
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+# Update levels for a single column inside the dicts embedded in a besd_info
+# list. Removes `remove` labels and appends `add` labels (NA values in `add`
+# are silently dropped, so NA-target recodes in besd_recode_levels() are safe).
+# Returns the modified info list. Used by besd_recode_levels() and
+# besd_recode_missing() to keep dict$levels consistent with the data.
+.update_dict_levels <- function(info, col, remove, add = character(0)) {
+  add <- add[!is.na(add)]
+  .do_update <- function(d) {
+    if (is.null(d)) return(NULL)
+    d   <- tibble::as_tibble(d)
+    idx <- match(col, d$item_id)
+    if (is.na(idx)) return(d)
+    levs            <- d$levels[[idx]]
+    levs            <- levs[!levs %in% remove]
+    levs            <- c(levs, setdiff(add, levs))
+    d$levels[[idx]] <- levs
+    d
+  }
+  info$besd_dict <- .do_update(info$besd_dict)
+  info$dem_dict  <- .do_update(info$dem_dict)
+  info
+}
 
 # Return the required dictionary column names in the correct order. When
 # `with_id = TRUE`, prepends "item_id" for contexts that need the full schema.

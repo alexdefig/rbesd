@@ -28,7 +28,7 @@
 #'   containing the encoded data frame, predictor metadata, level maps,
 #'   reference codes, term map, and all configuration fields needed for
 #'   fitting and tidying.
-#' @export
+#' @internal
 besd_prepare <- function(x,
                          predictors,
                          scope         = c("by_country", "multilevel"),
