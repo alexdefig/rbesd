@@ -63,8 +63,8 @@
 #'   parameters (cor_*). Set FALSE to drop cor parameters from the tidy output.
 #' @param exponentiate If TRUE, exponentiate slopes/intercepts (OR scale).
 #' @param return_baseline If TRUE, attach baseline (reference) category info.
-#'   Adds columns `baseline` and `baseline_code` and attaches a `baseline`
-#'   attribute with one row per (variable, country).
+#'   Adds column `baseline` and attaches a `baseline` attribute with one
+#'   one row per (variable, country).
 #' @export
 tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
                        include_cor = FALSE, exponentiate = FALSE,
@@ -196,7 +196,9 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 # Used for glm, clm, and clmm, where profile CIs are practical to compute.
 .ci_profile <- function(model, estimate, std_error, conf_level) {
   ci <- tryCatch(
-    stats::confint(model, level = conf_level, method = "profile"),
+    suppressMessages(
+      stats::confint(model, level = conf_level, method = "profile")
+    ),
     error   = function(e) NULL,
     warning = function(w) NULL
   )
@@ -573,7 +575,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   
   parse_one <- function(tm) {
     if (tm %in% c("Intercept", "(Intercept)")) {
-      return(list(variable = NA_character_, level = NA_character_,
+      return(list(variable = "(Intercept)", level = NA_character_,
                   country = NA_character_, param_type = "intercept"))
     }
     if (grepl("^Intercept\\[[0-9]+\\]$", tm) || grepl("^[0-9]+\\|[0-9]+$", tm)) {
@@ -802,7 +804,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   )
   if (isTRUE(include_baseline)) {
     tb$baseline      <- character()
-    tb$baseline_code <- character()
   }
   tb
 }
@@ -825,7 +826,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
     variable_id   = character(),
     variable      = character(),
     country       = character(),
-    baseline_code = character(),
     baseline      = character()
   )
 }
@@ -864,7 +864,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
           variable_id   = v,
           variable      = var_lab,
           country       = as.character(cc),
-          baseline_code = as.character(bcode),
           baseline      = as.character(blab)
         )
       }
@@ -875,7 +874,6 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
         variable_id   = v,
         variable      = var_lab,
         country       = NA_character_,
-        baseline_code = as.character(bcode),
         baseline      = as.character(blab)
       )
     }
@@ -899,18 +897,16 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
       )
       
       if (length(tm_entry)) {
-        bcode <- tm_entry[[1]]$baseline_code  %||% NA_character_
         blab  <- tm_entry[[1]]$baseline_label %||% NA_character_
       } else {
         bcode <- prep$ref_code_by_group_context[[v]][[cc]] %||% NA_character_
-        blab  <- if (!is.null(c2l) && !is.na(bcode)) .map_get(c2l, bcode) else NA_character_
+        blab  <- if (!is.null(c2l)) .map_get(c2l, bcode) else NA_character_
       }
       
       rows[[length(rows) + 1]] <- tibble::tibble(
         variable_id   = v,
         variable      = var_lab,
         country       = as.character(cc),
-        baseline_code = as.character(bcode),
         baseline      = as.character(blab)
       )
     }
@@ -937,28 +933,26 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 .attach_baselines <- function(out, base_tbl) {
   if (is.null(out) || !nrow(out) || is.null(base_tbl) || !nrow(base_tbl)) {
     if (!("baseline"      %in% names(out))) out$baseline      <- NA_character_
-    if (!("baseline_code" %in% names(out))) out$baseline_code <- NA_character_
     return(out)
   }
   
   key <- function(x) ifelse(is.na(x) | x == "", ".GLOBAL", as.character(x))
   out2  <- out;       out2$`.__ck__`  <- key(out2$country)
   base2 <- base_tbl;  base2$`.__ck__` <- key(base2$country)
-  base2 <- dplyr::select(base2, variable, `.__ck__`, baseline, baseline_code)
+  base2 <- dplyr::select(base2, variable, `.__ck__`, baseline)
   
   out2 <- dplyr::left_join(out2, base2, by = c("variable", ".__ck__"))
   
   base_global <- dplyr::select(
     dplyr::filter(base2, `.__ck__` == ".GLOBAL"),
-    variable, baseline_g = baseline, baseline_code_g = baseline_code
+    variable, baseline_g = baseline
   )
   out2 <- dplyr::left_join(out2, base_global, by = "variable")
   out2$baseline      <- dplyr::coalesce(out2$baseline,      out2$baseline_g)
-  out2$baseline_code <- dplyr::coalesce(out2$baseline_code, out2$baseline_code_g)
-  out2[c("baseline_g", "baseline_code_g", ".__ck__")] <- NULL
+  out2[c("baseline_g", ".__ck__")] <- NULL
   
   if ("level" %in% names(out2)) {
-    out2 <- dplyr::relocate(out2, baseline, baseline_code, .after = level)
+    out2 <- dplyr::relocate(out2, baseline, .after = level)
   }
   out2
 }

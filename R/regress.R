@@ -182,7 +182,7 @@ besd_regress <- function(x,
 
 # Dispatch to the appropriate model fitter based on engine and y_type. Expects
 # a pre-filtered data frame; callers handle complete-case deletion before this.
-.fit_model <- function(dat, formula, y_type, engine, multilevel) {
+.fit_model <- function(dat, formula, y_type, engine, multilevel, ...) {
   
   vars    <- all.vars(formula)
   missing <- setdiff(vars, names(dat))

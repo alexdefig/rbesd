@@ -75,3 +75,12 @@
   }
   invisible(TRUE)
 }
+
+# Assert that `x` is a single finite numeric value.
+# Intended for validating scalar numeric arguments (e.g., conf_level, priors).
+.assert_is_scalar_number <- function(x, nm) {
+  if (!is.numeric(x) || length(x) != 1L || !is.finite(x)) {
+    stop("`", nm, "` must be a single finite numeric.", call. = FALSE)
+  }
+  invisible(TRUE)
+}

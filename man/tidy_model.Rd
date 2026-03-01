@@ -26,8 +26,8 @@ parameters (cor_*). Set FALSE to drop cor parameters from the tidy output.}
 \item{exponentiate}{If TRUE, exponentiate slopes/intercepts (OR scale).}
 
 \item{return_baseline}{If TRUE, attach baseline (reference) category info.
-Adds columns \code{baseline} and \code{baseline_code} and attaches a \code{baseline}
-attribute with one row per (variable, country).}
+Adds column \code{baseline} and attaches a \code{baseline} attribute with one
+one row per (variable, country).}
 }
 \description{
 Tidy BeSD model outputs
