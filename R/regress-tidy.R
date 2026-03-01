@@ -395,7 +395,11 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
       for (coef in cn) {
         est  <- df_re[lvl, coef]
         se   <- if (!is.null(se_mat)) se_mat[lvl, coef] else NA_real_
-        vl   <- .coef_var_level(coef, prep)
+        vl   <- if (coef %in% c("(Intercept)", "Intercept")) {
+          list(var = "(Intercept)", level = NA_character_)
+        } else {
+          .coef_var_level(coef, prep)
+        }        
         lvl2 <- .country_from_stan(lvl, prep)
         
         rows[[length(rows) + 1]] <- .make_tidy_row(
