@@ -1,3 +1,107 @@
+# ── besd_recode_missing() ──────────────────────────────────────────────────────
+
+#' Recode missing-data tokens to NA
+#'
+#' Convenience helper for analysis workflows.
+#'
+#' @param x A `besd_data` object or data.frame.
+#' @param tokens Missing tokens. Character vector applied to all items/columns,
+#'   or named list with `.all` and/or per-item vectors.
+#' @param items Optional subset of item_ids/column names to process.
+#' @param dict Optional dictionary to identify multichoice items when `x` is a
+#'   data.frame. If `x` is a `besd_data`, dictionaries are read from attributes.
+#' @param multichoice_specs Optional list of multichoice specs (for `sep`) when
+#'   `x` is a data.frame. If `x` is a `besd_data`, specs are read from
+#'   `besd_info(x)$meta$multichoice_specs`.
+#' @param drop_levels If TRUE (default) and a column is a factor, drop the
+#'   missing-token levels.
+#' @return `x`, with missing tokens set to NA.
+#' @export
+besd_recode_missing <- function(x,
+                                tokens,
+                                items             = NULL,
+                                dict              = NULL,
+                                multichoice_specs = list(),
+                                drop_levels       = TRUE) {
+  
+  if (missing(tokens) || is.null(tokens)) .stopf("`tokens` must be provided.")
+  
+  if (is.list(tokens) && (is.null(names(tokens)) || any(names(tokens) == "")))
+    .stopf(
+      "`tokens` must be a char vector or *named* list (names = item_id and/or `.all`)."
+    )
+  
+  is_besd <- inherits(x, "besd_data")
+  
+  if (is_besd) {
+    info  <- besd_info(x)
+    dict  <- dplyr::bind_rows(
+      tibble::as_tibble(info$besd_dict),
+      if (is.null(info$dem_dict)) NULL else tibble::as_tibble(info$dem_dict)
+    )
+    meta              <- info$meta %||% list()
+    multichoice_specs <- meta$multichoice_specs %||% multichoice_specs
+  } else {
+    if (!is.data.frame(x)) .stopf("`x` must be a besd_data or a data.frame.")
+    # best-effort: treat all columns as non-multichoice if no dict supplied
+    dict <- if (is.null(dict)) {
+      tibble::tibble(item_id = character(0), item_type = character(0), levels = list())
+    } else {
+      tibble::as_tibble(dict)
+    }
+  }
+  
+  df   <- tibble::as_tibble(x)
+  cols <- if (is.null(items)) names(df) else intersect(names(df), items)
+  
+  for (nm in cols) {
+    miss <- .besd_missing_tokens_for_item(tokens, nm)
+    if (is.null(miss) || !length(miss)) next
+    
+    miss_keys <- .strip_non_alpnum(miss)
+    mt        <- dict$item_type[match(nm, dict$item_id)]
+    if (length(mt) == 0L || is.na(mt)) mt <- NA_character_
+    v <- df[[nm]]
+    
+    if (!is.na(mt) && mt == "multichoice") {
+      # Strip missing tokens from packed strings; NA if nothing remains
+      spec  <- multichoice_specs[[nm]] %||% list()
+      sep   <- spec$sep %||% .BESD_SEP
+      v_chr <- trimws(as.character(v))
+      v_chr[v_chr == ""] <- NA_character_
+      
+      df[[nm]] <- vapply(v_chr, function(s) {
+        if (is.na(s)) return(NA_character_)
+        toks <- strsplit(s, sep, fixed = TRUE)[[1]]
+        toks <- toks[toks != "" & !(.strip_non_alpnum(toks) %in% miss_keys)]
+        if (!length(toks)) NA_character_ else paste(unique(toks), collapse = sep)
+      }, character(1))
+      next
+    }
+    
+    # Non-multichoice: NA out missing tokens, drop factor levels if requested.
+    df[[nm]] <- .na_missing_tokens(v, miss_keys, drop_levels)
+  }
+  
+  if (!is_besd) return(df)
+  
+  # Re-wrap as besd_data preserving all attributes
+  info <- besd_info(x)
+  new_besd_data(
+    data        = df,
+    besd_dict   = info$besd_dict,
+    dem_dict    = info$dem_dict,
+    country_col = info$country_col,
+    weight_col  = info$weight_col,
+    id_col      = info$id_col,
+    mapping     = info$mapping,
+    besd_items  = info$besd_items,
+    dem_items   = info$dem_items,
+    meta        = info$meta
+  )
+}
+
+
 # ── besd_missing_summary() ─────────────────────────────────────────────────────
 
 #' Summarise missing data fractions for regression variables

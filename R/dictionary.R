@@ -266,7 +266,7 @@ modify_dictionary <- function(df = NULL,
     .stopf("One of `df` and `id_out` needs to be non-NULL.")
   }
   
-  # ---- Remove items ----
+  # Remove items
   if (!is.null(id_out) && length(id_out)) {
     if (!is.character(id_out)) {
       .stopf("`id_out` must be a character vector of item_id values.")
@@ -285,7 +285,7 @@ modify_dictionary <- function(df = NULL,
     dict <- dict[!(dict$item_id %in% id_out), , drop = FALSE]
   }
   
-  # ---- Add / update items ----
+  # Add / update items
   if (!is.null(df)) {
     req <- .dictionary_cols(TRUE)  # required dictionary columns
     if (!is.data.frame(df)) .stopf("`df` must be a data.frame/tibble.")
@@ -293,6 +293,16 @@ modify_dictionary <- function(df = NULL,
     
     .assert_has_cols(df, req, "df")
     df <- df[, req, drop = FALSE]
+    
+    # Coerce levels list-column entries to character vectors. Guards against
+    # factor columns being passed in via sort(unique(factor_col)), which would
+    # store factor integer codes instead of labels after any c(factor, character)
+    # operation downstream.
+    if (is.list(df$levels)) {
+      df$levels <- lapply(df$levels, function(x) {
+        if (is.factor(x)) as.character(x) else x
+      })
+    }
     
     if (replace) {
       dict <- dict[!(dict$item_id %in% df$item_id), , drop = FALSE]
