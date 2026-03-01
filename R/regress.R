@@ -102,7 +102,7 @@ besd_regress <- function(x,
   # Fit model for each outcome
   for (i in seq_along(outcome)) {
     yy <- outcome[[i]]
-    message(sprintf("Fitting outcome %d/%d: %s", i, n, yy))
+    if (n > 1L) message(sprintf("Fitting outcome %d/%d: %s", i, n, yy))
     t0 <- proc.time()[["elapsed"]]
     
     result <- tryCatch({
@@ -414,9 +414,9 @@ besd_regress <- function(x,
 }
 
 
-# ── Expand multichoice outcomes ─────────────────────────────────────────────────
+# ── Print methods ────────────────────────────────────────────────────────────────
 
-# Print multi besd regress
+# Print multi besd
 #' @export
 print.besd_regress_multi <- function(x, ...) {
   n_ok   <- sum(x$log$status == "success")

@@ -368,7 +368,7 @@ modify_dictionary <- function(df = NULL,
       item_id        = item_id,
       domain         = x$domain,
       item_type      = x$item_type,
-      levels         = list(x$levels),
+      levels         = list(as.character(x$levels)),
       reverse        = x$reverse,
       question       = x$question,
       question_short = x$question_short
@@ -455,6 +455,7 @@ modify_dictionary <- function(df = NULL,
     probs <- c(probs, "`levels` must be a list-column with length nrow(dict).")
   } else {
     bad_levels <- vapply(dict$levels, function(x) {
+      x <- if (is.factor(x)) as.character(x) else x
       !is.character(x) || length(x) < 1 || anyNA(x) || any(x == "")
     }, logical(1))
     if (any(bad_levels)) {
@@ -475,16 +476,4 @@ modify_dictionary <- function(df = NULL,
   }
   
   probs
-}
-
-# Assert that `dict` passes .validate_dict(); stop with a consolidated error message 
-# listing all problems if it does not. Returns invisible(TRUE) on success.
-.assert_valid_dict <- function(dict, 
-                               with_id = TRUE, ..., 
-                               arg = deparse(substitute(dict))) {
-  probs <- .validate_dict(dict, with_id = with_id, ...)
-  if (length(probs)) {
-    .stopf("Invalid dictionary `%s`:\n- %s", arg, paste(probs, collapse = "\n- "))
-  }
-  invisible(TRUE)
 }

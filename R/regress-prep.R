@@ -67,7 +67,6 @@ besd_prepare <- function(x,
   .check_predictor_variance(df, all_preds)
   
   # ── Scope-specific encoding ─────────────────────────────────────────────────
-  
   if (scope == "by_country") {
     
     prep_preds <- .prep_predictors(df, preds_common,
@@ -95,86 +94,33 @@ besd_prepare <- function(x,
     
   } else {
     
-    # Common predictors: global reference selection, no grouping
-    prep_common <- .prep_predictors(df, preds_common,
-                                    group_col = NULL,
-                                    min_n     = 0L,
-                                    ref_rule  = ref)
-    df <- prep_common$df
+    ml <- .prep_multilevel_predictors(df, preds_common, preds_context,
+                                      country_col, ref, ref_levels,
+                                      min_n_context)
+    df                        <- ml$df
+    level_map                 <- ml$level_map
+    level_map_context         <- ml$level_map_context
+    ref_code                  <- ml$ref_code
+    ref_code_by_group         <- list()
+    ref_code_by_group_context <- ml$ref_code_by_group_context
+    term_map                  <- ml$term_map
+    country_code_of           <- ml$country_code_of
+    countries                 <- ml$countries
+    added_ctx                 <- ml$added_ctx
+    use_uncor                 <- isTRUE(engine == "bayes" &&
+                                          isTRUE(random_slopes) &&
+                                          !isTRUE(correlated_re))
     
-    # Apply explicit reference overrides (common predictors only)
-    for (nm in intersect(names(ref_levels), preds_common)) {
-      v          <- df[[nm]]
-      if (!is.factor(v) || is.ordered(v)) next
-      want_label <- ref_levels[[nm]]
-      if (!is.character(want_label) || length(want_label) != 1L) next
-      mp         <- prep_common$level_map[[nm]]
-      if (is.null(mp)) next
-      idx        <- match(want_label, mp$label)
-      if (!is.na(idx)) {
-        want_code <- mp$code[[idx]]
-        if (want_code %in% levels(v)) df[[nm]] <- stats::relevel(v, ref = want_code)
-      }
-    }
-    
-    # Context predictors: per-country reference selection + min_n collapsing
-    if (length(preds_context)) {
-      prep_ctx <- .prep_predictors(df, preds_context,
-                                   group_col = country_col,
-                                   min_n     = as.integer(min_n_context),
-                                   ref_rule  = ref)
-      df <- prep_ctx$df
-    } else {
-      prep_ctx <- list(level_map = list(), ref_code_by_group = list())
-    }
-    
-    # Country encoding (C01, C02, ...)
-    countries       <- sort(unique(as.character(df[[country_col]])))
-    country_code_of <- stats::setNames(sprintf("C%02d", seq_along(countries)),
-                                       countries)
-    
-    # Expand context variables to per-country dummy columns
-    added_ctx    <- character()
-    ctx_term_map <- list()
-    if (length(preds_context)) {
-      for (var in preds_context) {
-        ex           <- .add_context_dummies(df, var, country_col,
-                                             country_code_of,
-                                             prep_ctx$ref_code_by_group[[var]],
-                                             prep_ctx$level_map[[var]])
-        df           <- ex$df
-        added_ctx    <- c(added_ctx, ex$added)
-        ctx_term_map <- c(ctx_term_map, ex$term_map)
-      }
-    }
-    
-    # Warn on joint missingness across common predictors only.
-    # Context predictors are intentionally excluded: their NAs are converted to
-    # 0s in the dummy columns above and do NOT cause listwise deletion. A
-    # country where a context predictor is entirely missing is expected and
-    # normal — those rows simply contribute without that predictor.
     .warn_missingness(df,
                       vars        = preds_common,
                       country_col = country_col,
                       threshold   = 0.05,
                       context     = "multilevel")
     
-    # Separately report countries where a context predictor has no observed
-    # levels — informational only, not a data quality warning.
     if (length(preds_context)) {
       .inform_context_coverage(df, preds_context, country_col)
     }
     
-    level_map                 <- prep_common$level_map
-    level_map_context         <- prep_ctx$level_map
-    ref_code                  <- prep_common$ref_code
-    ref_code_by_group         <- list()
-    ref_code_by_group_context <- prep_ctx$ref_code_by_group
-    term_map                  <- .build_term_map(preds_common, prep_common$level_map,
-                                                 added_ctx, ctx_term_map)
-    use_uncor                 <- isTRUE(engine == "bayes" &&
-                                          isTRUE(random_slopes) &&
-                                          !isTRUE(correlated_re))
   }
   
   structure(
@@ -302,6 +248,81 @@ besd_prepare <- function(x,
        ref_code = ref_code)
 }
 
+
+# Prepare all predictors for a multilevel model fit. Handles common predictor
+# encoding, explicit reference overrides, context predictor encoding with
+# min_n collapsing, country encoding, and context dummy expansion. Returns a
+# named list of all assembled pieces consumed by besd_prepare().
+.prep_multilevel_predictors <- function(df, preds_common, preds_context,
+                                        country_col, ref, ref_levels,
+                                        min_n_context) {
+  
+  # Common predictors: global reference selection, no grouping
+  prep_common <- .prep_predictors(df, preds_common,
+                                  group_col = NULL,
+                                  min_n     = 0L,
+                                  ref_rule  = ref)
+  df <- prep_common$df
+  
+  # Apply explicit reference overrides (common predictors only)
+  for (nm in intersect(names(ref_levels), preds_common)) {
+    v          <- df[[nm]]
+    if (!is.factor(v) || is.ordered(v)) next
+    want_label <- ref_levels[[nm]]
+    if (!is.character(want_label) || length(want_label) != 1L) next
+    mp         <- prep_common$level_map[[nm]]
+    if (is.null(mp)) next
+    idx        <- match(want_label, mp$label)
+    if (!is.na(idx)) {
+      want_code <- mp$code[[idx]]
+      if (want_code %in% levels(v)) df[[nm]] <- stats::relevel(v, ref = want_code)
+    }
+  }
+  
+  # Context predictors: per-country reference selection + min_n collapsing
+  if (length(preds_context)) {
+    prep_ctx <- .prep_predictors(df, preds_context,
+                                 group_col = country_col,
+                                 min_n     = as.integer(min_n_context),
+                                 ref_rule  = ref)
+    df <- prep_ctx$df
+  } else {
+    prep_ctx <- list(level_map = list(), ref_code_by_group = list())
+  }
+  
+  # Country encoding (C01, C02, ...)
+  countries       <- sort(unique(as.character(df[[country_col]])))
+  country_code_of <- stats::setNames(sprintf("C%02d", seq_along(countries)),
+                                     countries)
+  
+  # Expand context variables to per-country dummy columns
+  added_ctx    <- character()
+  ctx_term_map <- list()
+  if (length(preds_context)) {
+    for (var in preds_context) {
+      ex           <- .add_context_dummies(df, var, country_col,
+                                           country_code_of,
+                                           prep_ctx$ref_code_by_group[[var]],
+                                           prep_ctx$level_map[[var]])
+      df           <- ex$df
+      added_ctx    <- c(added_ctx, ex$added)
+      ctx_term_map <- c(ctx_term_map, ex$term_map)
+    }
+  }
+  
+  list(
+    df                        = df,
+    level_map                 = prep_common$level_map,
+    level_map_context         = prep_ctx$level_map,
+    ref_code                  = prep_common$ref_code,
+    ref_code_by_group_context = prep_ctx$ref_code_by_group,
+    term_map                  = .build_term_map(preds_common, prep_common$level_map,
+                                                added_ctx, ctx_term_map),
+    country_code_of           = country_code_of,
+    countries                 = countries,
+    added_ctx                 = added_ctx
+  )
+}
 
 # Relevel factors in `df` to the per-country references stored in `ref_code_by_group`, 
 # for the single country `group_value`.
@@ -463,7 +484,7 @@ besd_prepare <- function(x,
   if (!length(bad)) return(invisible(NULL))
   
   # Build a helpful hint from meta$missing_tokens if available
-  tokens <- meta$missing_tokens %||% NULL
+  tokens <- meta$missing_tokens
   token_hint <- if (!is.null(tokens)) {
     toks <- if (is.character(tokens)) tokens else unlist(tokens, use.names = FALSE)
     toks <- unique(toks[!is.na(toks) & nzchar(toks)])

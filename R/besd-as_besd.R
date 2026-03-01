@@ -427,7 +427,7 @@ besd_recode_missing <- function(x,
   
   unknown_action <- match.arg(unknown_action)
   item_type  <- meta_row$item_type[[1]]
-  levels_std <- meta_row$levels[[1]]
+  levels_std <- as.character(meta_row$levels[[1]])
   reverse    <- meta_row$reverse[[1]]
   miss_keys  <- .strip_non_alpnum(missing_tokens %||% character(0))
   
@@ -479,7 +479,7 @@ besd_recode_missing <- function(x,
   if (item_type == "multichoice") {
     sep <- spec$sep %||% .BESD_SEP
     return(.coerce_multichoice_packed(
-      x, levels_std,
+      x, as.character(levels_std),
       sep             = sep,
       missing_tokens  = missing_tokens,
       unknown_action  = unknown_action,

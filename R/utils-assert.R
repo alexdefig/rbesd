@@ -3,9 +3,9 @@
 # Small internal assertion utilities used across the package. None are exported.
 #
 # .assert_besd()             – stop if `x` is not a `besd_data` object
+# .assert_valid_dict()       - stop if `x` not a valid dictionary
 # .assert_has_cols()         – stop if required columns are absent from a data frame
 # .assert_is_scalar_string() – stop if `x` is not a non-empty length-1 string
-# .assert_is_scalar_number() – stop if `x` is not a single finite numeric
 
 
 # Assert that an object inherits from `besd_data`.
@@ -14,6 +14,18 @@
     stop("`x` must be a `besd_data` object.", call. = FALSE)
   }
   invisible(x)
+}
+
+# Assert that `dict` passes .validate_dict(); stop with a consolidated error message 
+# listing all problems if it does not. Returns invisible(TRUE) on success.
+.assert_valid_dict <- function(dict, 
+                               with_id = TRUE, ..., 
+                               arg = deparse(substitute(dict))) {
+  probs <- .validate_dict(dict, with_id = with_id, ...)
+  if (length(probs)) {
+    .stopf("Invalid dictionary `%s`:\n- %s", arg, paste(probs, collapse = "\n- "))
+  }
+  invisible(TRUE)
 }
 
 # Assert that `df` is a data.frame and that `cols` exist in it. Supports either a scalar 

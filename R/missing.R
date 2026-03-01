@@ -135,6 +135,142 @@ besd_missing_summary <- function(x, vars = NULL, country_col = NULL,
   )
 }
 
+# ── besd_recode_levels() ───────────────────────────────────────────────────────
+
+#' Recode factor levels in a column before or after calling as_besd()
+#'
+#' A lightweight helper for collapsing or renaming rare levels. Accepts either
+#' a `besd_data` object (typical use: after [as_besd()], before [besd_regress()])
+#' or a plain vector (use: before [as_besd()]).
+#'
+#' When `x` is a `besd_data` object, the dictionary levels for `col` are also
+#' updated to reflect the recoding, so the object stays internally consistent.
+#'
+#' The target label must already exist in the data or dictionary. Recoding to a
+#' brand-new label not in the dictionary will cause an unknown-value error if
+#' the object is later passed back through [as_besd()].
+#'
+#' @param x A `besd_data` object or a factor/character vector.
+#' @param recode Named character vector: names are old labels, values are new
+#'   labels. E.g. `c("Luo" = "Other", "Kikuyu minority" = "Other")`.
+#' @param col Column name to recode. Required when `x` is a `besd_data` object;
+#'   ignored when `x` is a vector.
+#' @param warn_new If `TRUE` (default), warn when a target label does not
+#'   already exist in the data, as this may indicate a dictionary mismatch.
+#'
+#' @return `x` with levels recoded. When `x` is a `besd_data` object, the
+#'   dictionary is updated and a `besd_data` object is returned. When `x` is a
+#'   vector, a recoded vector of the same type is returned.
+#' @examples
+#' \dontrun{
+#' # On a besd_data object (recommended)
+#' y <- besd_recode_levels(
+#'   y,
+#'   col    = "dem_eth",
+#'   recode = c("Luo" = "Other", "Kikuyu minority" = "Other")
+#' )
+#'
+#' # On a raw vector before as_besd()
+#' data_demo$dem_eth <- besd_recode_levels(
+#'   data_demo$dem_eth,
+#'   recode = c("Luo" = "Other", "Kikuyu minority" = "Other")
+#' )
+#' }
+#' @export
+besd_recode_levels <- function(x, recode, col = NULL, warn_new = TRUE) {
+  
+  if (!is.character(recode) || is.null(names(recode)) || any(names(recode) == ""))
+    .stopf("`recode` must be a named character vector: c('old' = 'new', ...).")
+  
+  # ── besd_data path ─────────────────────────────────────────────────────────
+  if (inherits(x, "besd_data")) {
+    if (is.null(col) || !is.character(col) || length(col) != 1L || !nzchar(col))
+      .stopf("`col` must be a single non-empty column name when `x` is a `besd_data`.")
+    
+    df <- tibble::as_tibble(x)
+    if (!col %in% names(df))
+      .stopf("Column `%s` not found in `x`.", col)
+    
+    df[[col]] <- besd_recode_levels(df[[col]], recode = recode, warn_new = warn_new)
+    
+    # Update dictionary levels for this column to stay consistent
+    info     <- besd_info(x)
+    combined <- dplyr::bind_rows(
+      tibble::as_tibble(info$besd_dict),
+      if (is.null(info$dem_dict)) NULL else tibble::as_tibble(info$dem_dict)
+    )
+    idx <- match(col, combined$item_id)
+    if (!is.na(idx)) {
+      old_levs <- combined$levels[[idx]]
+      # Remove recoded-away levels; append any new target labels not already present
+      new_levs <- old_levs[!old_levs %in% names(recode)]
+      added    <- setdiff(unique(unname(recode)), new_levs)
+      new_levs <- c(new_levs, added)
+      
+      # Update whichever dict contains this column
+      if (col %in% tibble::as_tibble(info$besd_dict)$item_id) {
+        besd_dict_updated           <- tibble::as_tibble(info$besd_dict)
+        besd_dict_updated$levels[[match(col, besd_dict_updated$item_id)]] <- new_levs
+        info$besd_dict              <- besd_dict_updated
+      } else if (!is.null(info$dem_dict) &&
+                 col %in% tibble::as_tibble(info$dem_dict)$item_id) {
+        dem_dict_updated            <- tibble::as_tibble(info$dem_dict)
+        dem_dict_updated$levels[[match(col, dem_dict_updated$item_id)]] <- new_levs
+        info$dem_dict               <- dem_dict_updated
+      }
+    }
+    
+    return(new_besd_data(
+      data        = df,
+      besd_dict   = info$besd_dict,
+      dem_dict    = info$dem_dict,
+      country_col = info$country_col,
+      weight_col  = info$weight_col,
+      id_col      = info$id_col,
+      mapping     = info$mapping,
+      besd_items  = info$besd_items,
+      dem_items   = info$dem_items,
+      meta        = info$meta
+    ))
+  }
+  
+  # ── Plain vector path ──────────────────────────────────────────────────────
+  is_fct <- is.factor(x)
+  x_chr  <- as.character(x)
+  
+  if (isTRUE(warn_new)) {
+    existing <- unique(x_chr[!is.na(x_chr)])
+    new_levs <- setdiff(unique(unname(recode)), existing)
+    if (length(new_levs)) {
+      warning(
+        sprintf(
+          paste0(
+            "besd_recode_levels(): target label(s) not found in existing data: %s. ",
+            "Ensure these match your dictionary levels exactly."
+          ),
+          paste(paste0('"', new_levs, '"'), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  
+  hits <- names(recode)[names(recode) %in% x_chr]
+  for (old in hits) x_chr[x_chr == old] <- recode[[old]]
+  
+  if (!is_fct) return(x_chr)
+  
+  old_levs     <- levels(x)
+  removed_levs <- names(recode)[names(recode) %in% old_levs]
+  new_levs     <- unique(c(
+    old_levs[!old_levs %in% removed_levs],
+    unique(unname(recode)[names(recode) %in% removed_levs])
+  ))
+  new_levs <- new_levs[new_levs %in% unique(x_chr[!is.na(x_chr)])]
+  factor(x_chr, levels = new_levs)
+}
+
+
 # ── besd_rare_levels() ─────────────────────────────────────────────────────────
 
 #' Inspect rare factor levels before fitting

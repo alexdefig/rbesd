@@ -6,7 +6,6 @@
 \usage{
 besd_prepare(
   x,
-  outcome,
   predictors,
   scope = c("by_country", "multilevel"),
   engine = c("frequentist", "bayes"),
@@ -19,8 +18,6 @@ besd_prepare(
 }
 \arguments{
 \item{x}{A \code{besd_data} object.}
-
-\item{outcome}{Single BeSD \code{item_id}.}
 
 \item{predictors}{Character vector (\code{by_country}) or
 \code{list(common = ..., context = ...)} (\code{multilevel}).}
