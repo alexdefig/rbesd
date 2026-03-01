@@ -1,6 +1,6 @@
 # rbesd
 
-<img src="man/figures/img_rbesd.jpeg" align="right" width="140"/>
+<img src="man/figures/img_rbesd.jpg" align="right" width="140"/>
 
 `rbesd` is an R package providing a standardized workflow for WHO/UNICEF BeSD quantitative toolkit data:
 
