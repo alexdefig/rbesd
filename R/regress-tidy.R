@@ -68,7 +68,7 @@
 #' @export
 tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
                        include_cor = FALSE, exponentiate = FALSE,
-                       return_baseline = FALSE) {
+                       return_baseline = TRUE) {
   
   if (!inherits(fit, c("besd_fit", "besd_fit_by_country"))) {
     .stopf("`fit` must be a besd_fit or besd_fit_by_country object.")
