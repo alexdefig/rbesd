@@ -10,7 +10,7 @@ tidy_model(
   include_random = FALSE,
   include_cor = FALSE,
   exponentiate = FALSE,
-  return_baseline = FALSE
+  return_baseline = TRUE
 )
 }
 \arguments{
