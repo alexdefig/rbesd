@@ -241,6 +241,7 @@ besd_summary_demographics <- function(x) {
         n = n,
         sum_w = sw,
         n_eff = n_eff,
+        n_resp = vapply(levels_std, function(lv) sum(xi == lv, na.rm = TRUE), integer(1)),
         pct = 100 * p_vec,
         lcl = 100 * ci_mat[, "lcl"],
         ucl = 100 * ci_mat[, "ucl"]
@@ -306,6 +307,7 @@ besd_summary_demographics <- function(x) {
           n = n,
           sum_w = sw,
           n_eff = n_eff,
+          n_resp = sum(sel, na.rm = TRUE),
           pct = 100 * p,
           lcl = 100 * ci[["lcl"]],
           ucl = 100 * ci[["ucl"]]
