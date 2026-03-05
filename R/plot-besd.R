@@ -119,14 +119,7 @@ plot_besd_bars <- function(sum_tbl,
     p
   }
   
-  make_mc_combined <- function() {
-    # One figure for all multichoice items, faceted by item.
-    # y = response option, x = pct selecting it.
-    # Single country: fill by response (full palette per item via free colour
-    #   scale is not possible in one ggplot, so use a single accent colour and
-    #   rely on bar length + label to differentiate options).
-    # Multiple countries: fill by country, dodged bars.
-    
+  make_mc_plots <- function() {
     dd_mc2 <- dd_mc |>
       dplyr::mutate(
         response  = as.character(.data$response),
@@ -136,9 +129,8 @@ plot_besd_bars <- function(sum_tbl,
           n_lines = 3
         )
       )
-    
-    # Within each item, order responses by mean pct descending (so the longest
-    # bar sits at the top of each facet).
+
+    # Within each item, order responses by mean pct ascending (longest bar at top).
     resp_order <- dd_mc2 |>
       dplyr::group_by(.data$item_id, .data$response) |>
       dplyr::summarise(mean_pct = mean(.data$pct, na.rm = TRUE),
@@ -146,17 +138,17 @@ plot_besd_bars <- function(sum_tbl,
       dplyr::arrange(.data$item_id, .data$mean_pct) |>
       dplyr::pull(.data$response) |>
       unique()
-    
+
     dd_mc2 <- dd_mc2 |>
       dplyr::mutate(response = factor(.data$response, levels = resp_order))
-    
-    n_mc_items <- dplyr::n_distinct(dd_mc2$item_id)
-    
+
+    mc_items <- unique(dd_mc2$item_id)
+
     if (n_countries <= 1) {
-      # Single accent colour per facet is not straightforward in one ggplot;
-      # use a neutral fill and rely on labels.
+      # Single country: one combined plot, all items faceted side-by-side.
+      # Response options on y-axis; no grey strip background.
       accent <- .as_palette(palette, 1)[1]
-      
+
       p <- ggplot2::ggplot(
         dd_mc2,
         ggplot2::aes(y = .data$response, x = .data$pct)
@@ -179,7 +171,7 @@ plot_besd_bars <- function(sum_tbl,
         ) +
         ggplot2::facet_wrap(
           ~ item_lab2,
-          ncol   = 1,
+          ncol   = 2,
           scales = "free_y"
         ) +
         ggplot2::labs(y = NULL) +
@@ -190,79 +182,97 @@ plot_besd_bars <- function(sum_tbl,
             hjust  = 0,
             size   = base_size * 0.9
           ),
-          strip.background   = ggplot2::element_rect(fill = "grey95",
-                                                     colour = NA),
+          strip.background   = ggplot2::element_blank(),
           panel.grid.major.y = ggplot2::element_blank(),
           panel.grid.major.x = ggplot2::element_line(colour = "grey90",
                                                      linewidth = 0.3),
           panel.grid.minor   = ggplot2::element_blank(),
-          panel.spacing.y    = grid::unit(0.8, "lines"),
+          panel.spacing      = grid::unit(0.8, "lines"),
           legend.position    = "none"
         )
-      
-    } else {
-      countries <- levels(dd_mc2$country)
-      mc_pal    <- .as_palette(palette, length(countries), levels = countries)
-      
+
+      return(list(multichoice = p))
+    }
+
+    # Multiple countries: one plot per item.
+    # Each plot: x = country, y = pct, faceted by response option.
+    accent <- .as_palette(palette, 1)[1]
+
+    make_one_mc <- function(item) {
+      di <- dd_mc2 |> dplyr::filter(.data$item_id == item)
+
+      if (sort_bars) {
+        country_order <- di |>
+          dplyr::group_by(.data$country) |>
+          dplyr::summarise(mean_pct = mean(.data$pct, na.rm = TRUE),
+                           .groups = "drop") |>
+          dplyr::arrange(.data$mean_pct) |>
+          dplyr::pull(.data$country) |>
+          as.character()
+        di <- di |>
+          dplyr::mutate(country = factor(as.character(.data$country),
+                                         levels = country_order))
+      }
+
+      n_resp <- dplyr::n_distinct(di$response)
+      facet_ncol <- ceiling(sqrt(n_resp))
+
       p <- ggplot2::ggplot(
-        dd_mc2,
-        ggplot2::aes(y = .data$response, x = .data$pct, fill = .data$country)
+        di,
+        ggplot2::aes(x = .data$country, y = .data$pct)
       ) +
-        ggplot2::geom_col(
-          position = ggplot2::position_dodge(width = 0.8),
-          width    = 0.72,
-          colour   = "white",
-          linewidth = 0.3
-        ) +
-        ggplot2::scale_x_continuous(
+        ggplot2::geom_col(fill = accent, width = 0.72,
+                          colour = "white", linewidth = 0.3) +
+        ggplot2::scale_y_continuous(
           limits = c(0, 105),
           expand = c(0, 0),
-          labels = function(x) paste0(x, "%"),
-          name   = "Percent selecting option"
+          labels = function(x) paste0(x, "%")
         ) +
-        ggplot2::scale_fill_manual(values = mc_pal, name = "Country") +
         ggplot2::facet_wrap(
-          ~ item_lab2,
-          ncol   = 1,
-          scales = "free_y"
+          ~ response,
+          ncol   = facet_ncol,
+          scales = "fixed",
+          axes   = "all_x"
         ) +
-        ggplot2::labs(y = NULL) +
+        ggplot2::labs(x = NULL, y = "Percent selecting option",
+                      title = unique(di$item_lab2)) +
         besd_theme(base_size) +
         ggplot2::theme(
           strip.text         = ggplot2::element_text(
-            face   = "bold",
-            hjust  = 0,
-            size   = base_size * 0.9
+            face  = "bold",
+            hjust = 0.5,
+            size  = base_size * 0.85
           ),
-          strip.background   = ggplot2::element_rect(fill = "grey95",
-                                                     colour = NA),
-          panel.grid.major.y = ggplot2::element_blank(),
-          panel.grid.major.x = ggplot2::element_line(colour = "grey90",
+          strip.background   = ggplot2::element_blank(),
+          axis.text.x        = ggplot2::element_text(angle = 45, hjust = 1,
+                                                     margin = ggplot2::margin(t = 2)),
+          panel.grid.major.x = ggplot2::element_blank(),
+          panel.grid.major.y = ggplot2::element_line(colour = "grey90",
                                                      linewidth = 0.3),
           panel.grid.minor   = ggplot2::element_blank(),
-          panel.spacing.y    = grid::unit(0.8, "lines"),
-          legend.position    = "bottom",
-          legend.title       = ggplot2::element_text(face = "bold")
+          panel.spacing      = grid::unit(0.8, "lines"),
+          legend.position    = "none"
         )
-      
+
       if (isTRUE(label_pct)) {
         p <- p + ggplot2::geom_text(
           ggplot2::aes(label = dplyr::if_else(
             .data$pct >= label_min, sprintf("%.0f%%", .data$pct), ""
           )),
-          position = ggplot2::position_dodge(width = 0.8),
-          hjust    = -0.15,
-          size     = base_size * 0.26,
-          colour   = "grey20"
+          vjust  = -0.2,
+          size   = base_size * 0.26,
+          colour = "grey20"
         )
       }
+      p
     }
-    p
+
+    stats::setNames(lapply(mc_items, make_one_mc), mc_items)
   }
-  
+
   mc_plots <- list()
   if (nrow(dd_mc) > 0) {
-    mc_plots <- list(multichoice = make_mc_combined())
+    mc_plots <- make_mc_plots()
   }
   
   nm_plots <- list()
