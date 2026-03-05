@@ -278,22 +278,22 @@ besd_missing_summary <- function(x, vars = NULL, country_col = NULL,
       by_cty <- df |>
         dplyr::group_by(country = .data[[country_col]]) |>
         dplyr::summarise(
-          n_total     = dplyr::n(),
-          n_missing   = sum(is.na(.data[[v]])),
-          pct_missing = .data$n_missing / .data$n_total,
+          n_total      = dplyr::n(),
+          n_missing    = sum(is.na(.data[[v]])),
+          prop_missing = .data$n_missing / .data$n_total,
           .groups = "drop"
         ) |>
         dplyr::filter(.data$n_missing > 0) |>
-        dplyr::arrange(dplyr::desc(.data$pct_missing))
+        dplyr::arrange(dplyr::desc(.data$prop_missing))
     }
     
     tibble::tibble(
-      variable    = v,
-      n_total     = n_total,
-      n_missing   = n_missing,
-      pct_missing = pct,
-      flagged     = pct >= threshold,
-      by_country  = list(by_cty)
+      variable     = v,
+      n_total      = n_total,
+      n_missing    = n_missing,
+      prop_missing = pct,
+      flagged      = pct >= threshold,
+      by_country   = list(by_cty)
     )
   })
   
@@ -302,12 +302,12 @@ besd_missing_summary <- function(x, vars = NULL, country_col = NULL,
   n_lost     <- nrow(df) - n_complete
   pct_lost   <- n_lost / nrow(df)
   rows[["__joint__"]] <- tibble::tibble(
-    variable    = "(listwise joint)",
-    n_total     = nrow(df),
-    n_missing   = n_lost,
-    pct_missing = pct_lost,
-    flagged     = pct_lost >= threshold,
-    by_country  = list(NULL)
+    variable     = "(listwise joint)",
+    n_total      = nrow(df),
+    n_missing    = n_lost,
+    prop_missing = pct_lost,
+    flagged      = pct_lost >= threshold,
+    by_country   = list(NULL)
   )
   
   dplyr::bind_rows(rows)
@@ -478,12 +478,12 @@ besd_rare_levels <- function(x, predictors, country_col = NULL,
       cty_str <- if (!is.null(top3) && nrow(top3)) {
         paste0(" [worst: ",
                paste0(top3$country, " ",
-                      sprintf("%.0f%%", top3$pct_missing * 100),
+                      sprintf("%.0f%%", top3$prop_missing * 100),
                       collapse = ", "),
                "]")
       } else ""
       sprintf("  %s: %.1f%% missing%s",
-              row$variable, row$pct_missing * 100, cty_str)
+              row$variable, row$prop_missing * 100, cty_str)
     }, character(1))
   } else character(0)
   
@@ -499,7 +499,7 @@ besd_rare_levels <- function(x, predictors, country_col = NULL,
              "not random.%s\n",
              "Use besd_missing_summary() to investigate further."),
       ctx_str,
-      joint$pct_missing * 100,
+      joint$prop_missing * 100,
       joint$n_missing,
       joint$n_total,
       var_part

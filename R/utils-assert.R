@@ -16,6 +16,61 @@
   invisible(x)
 }
 
+
+#' Validate that an object is a usable BeSD summary table
+#' @keywords internal
+.assert_besd_summary_tbl <- function(x,
+                                     fn = NULL,
+                                     require_attrs = TRUE) {
+  fn_tag <- if (!is.null(fn)) paste0(fn, ": ") else ""
+  
+  # Basic structure
+  if (!is.data.frame(x)) {
+    stop(fn_tag, "Expected a BeSD summary tibble (data frame), got ",
+         class(x)[[1]], ".", call. = FALSE)
+  }
+  
+  # Required columns
+  required <- c("item_id", "response", "pct", "item_type", "country")
+  missing  <- setdiff(required, names(x))
+  if (length(missing)) {
+    stop(fn_tag,
+         "Summary table is missing required column(s): ",
+         paste(missing, collapse = ", "),
+         ".\nDid you pass the output of summary(besd_data)?",
+         call. = FALSE)
+  }
+  
+  # Class tag (warn, not error — easy to lose after dplyr ops)
+  if (!"besd_summary_tbl" %in% class(x)) {
+    warning(fn_tag,
+            "Object does not have class 'besd_summary_tbl'. ",
+            "Some features (e.g. response ordering, reverse-flag top-box) ",
+            "may not work correctly if the table was modified after calling ",
+            "summary().",
+            call. = FALSE)
+  }
+  
+  # Attributes needed for reverse-flag and response ordering
+  if (isTRUE(require_attrs)) {
+    missing_attrs <- character()
+    if (is.null(attr(x, "besd_dict"))) missing_attrs <- c(missing_attrs, "besd_dict")
+    if (is.null(attr(x, "dem_dict")))  missing_attrs <- c(missing_attrs, "dem_dict")
+    
+    if (length(missing_attrs)) {
+      warning(fn_tag,
+              "Summary table is missing attribute(s): ",
+              paste(missing_attrs, collapse = ", "),
+              ".\nReverse-flag top-box selection and response ordering will ",
+              "be disabled. This usually happens when dplyr verbs (filter, ",
+              "mutate, etc.) strip attributes from the summary table.",
+              call. = FALSE)
+    }
+  }
+  
+  invisible(x)
+}
+
 # Assert that `dict` passes .validate_dict(); stop with a consolidated error message 
 # listing all problems if it does not. Returns invisible(TRUE) on success.
 .assert_valid_dict <- function(dict, 
