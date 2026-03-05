@@ -235,7 +235,7 @@ dem_dictionary <- function() {
         "45-54 years old", 
         "55+ years"
       ),
-      reverse = FALSE,
+      reverse = NA,
       question = "How old are you?",
       question_short = "Age"
     )
@@ -294,6 +294,16 @@ modify_dictionary <- function(df = NULL,
     .assert_has_cols(df, req, "df")
     df <- df[, req, drop = FALSE]
     
+    # Coerce flat character `levels` to list-column (one entry per item_id)
+    if (is.character(df$levels)) {
+      df <- df |>
+        dplyr::reframe(
+          dplyr::across(dplyr::all_of(setdiff(req, c("item_id", "levels"))), dplyr::first),
+          levels = list(levels),
+          .by = item_id
+        )
+      df <- df[, req, drop = FALSE]
+    }
     # Coerce levels list-column entries to character vectors. Guards against
     # factor columns being passed in via sort(unique(factor_col)), which would
     # store factor integer codes instead of labels after any c(factor, character)

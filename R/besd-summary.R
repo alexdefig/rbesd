@@ -161,6 +161,14 @@ besd_summary_demographics <- function(x) {
   item_type <- meta_row$item_type[[1]]
   levels_std <- meta_row$levels[[1]]
   
+  # Wwhen keeping missing tokens, extend levels_std to include them
+  if (!exclude_missing_tokens) {
+    miss_i <- .besd_missing_tokens_for_item(missing_tokens, item_id)
+    if (!is.null(miss_i) && length(miss_i)) {
+      levels_std <- unique(c(levels_std, as.character(miss_i)))
+    }
+  }
+  
   x <- df[[item_id]]
   w <- if (!is.null(weight_col) && weight_col %in% names(df)) {
     df[[weight_col]]
