@@ -149,6 +149,12 @@ plot_besd_bars <- function(sum_tbl,
       # Response options on y-axis; no grey strip background.
       accent <- .as_palette(palette, 1)[1]
 
+      wrapped_levels <- .wrap_lines(levels(dd_mc2$response), width = 25)
+      dd_mc2 <- dd_mc2 |>
+        dplyr::mutate(response = factor(.wrap_lines(as.character(.data$response),
+                                                    width = 25),
+                                        levels = wrapped_levels))
+
       p <- ggplot2::ggplot(
         dd_mc2,
         ggplot2::aes(y = .data$response, x = .data$pct)
@@ -877,7 +883,7 @@ plot_besd_spider <- function(sum_tbl,
           ggplot2::aes(x = .data$x, y = .data$y, color = .data$country),
           size = 2.5
         ) +
-        ggplot2::scale_color_manual(values = pal, name = "Comparison") +
+        ggplot2::scale_color_manual(values = pal, name = "") +
         ggplot2::scale_fill_manual(values = pal, guide = "none")
     }
     
