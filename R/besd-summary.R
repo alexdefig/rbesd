@@ -396,3 +396,95 @@ besd_summary_demographics <- function(x) {
 }
 
 
+# ── besd_summary_by() ──────────────────────────────────────────────────────────
+
+#' Summarise BeSD items stratified by a demographic variable
+#'
+#' Produces a per-stratum summary table identical in structure to
+#' `summary(besd_data)` but broken down by the levels of a single demographic
+#' variable.  All existing logic (weights, CIs, missing-token handling, item
+#' types) is preserved because the function works by temporarily using the
+#' combined `(country × dem_level)` key as the grouping variable and then
+#' splitting it back.
+#'
+#' @param object A `besd_data` object.
+#' @param by_col  Character scalar.  Name of the demographic column in
+#'   `object` to stratify by (e.g. `"dem_gen"`).
+#' @param ...  Additional arguments forwarded to `summary.besd_data` (e.g.
+#'   `conf_level`, `exclude_missing_tokens`).
+#'
+#' @return A tibble with the same columns as `summary(besd_data)` plus:
+#'   \describe{
+#'     \item{subgroup_var}{The column name passed to `by_col`.}
+#'     \item{subgroup_label}{Human-readable label from `dem_dict` if available,
+#'       otherwise equal to `subgroup_var`.}
+#'     \item{subgroup_level}{The specific level of `by_col` for each row.}
+#'   }
+#' @export
+besd_summary_by <- function(object, by_col, ...) {
+  .assert_besd(object)
+  info <- besd_info(object)
+  df   <- tibble::as_tibble(object)
+
+  if (!by_col %in% names(df)) {
+    .stopf("Column '%s' not found in the besd_data object.", by_col)
+  }
+
+  country_col <- info$country_col
+  if (is.null(country_col) || !country_col %in% names(df)) {
+    df[["..country_tmp"]] <- "national"
+    country_col <- "..country_tmp"
+  }
+
+  # Drop rows where by_col is NA before grouping
+  keep <- !is.na(df[[by_col]])
+  if (!any(keep)) .stopf("All values of '%s' are NA.", by_col)
+  df <- df[keep, , drop = FALSE]
+
+  # Use a separator that cannot appear in country names or factor labels
+  sep <- "\u241F"
+  df[["..strata_tmp"]] <- paste(
+    as.character(df[[country_col]]),
+    as.character(df[[by_col]]),
+    sep = sep
+  )
+
+  # Construct a temporary besd_data object using the strata column as country
+  tmp_obj <- new_besd_data(
+    data        = df,
+    besd_dict   = attr(object, "besd_dict"),
+    dem_dict    = attr(object, "dem_dict"),
+    country_col = "..strata_tmp",
+    weight_col  = info$weight_col,
+    id_col      = info$id_col,
+    besd_items  = info$besd_items,
+    dem_items   = info$dem_items,
+    meta        = info$meta %||% list()
+  )
+
+  sm <- summary(tmp_obj, include_demographics = FALSE, ...)
+
+  # Split the strata key back into country and subgroup_level
+  parts             <- strsplit(as.character(sm$country), sep, fixed = TRUE)
+  sm$country        <- vapply(parts, `[[`, character(1), 1)
+  sm$subgroup_var   <- by_col
+  sm$subgroup_level <- vapply(
+    parts, function(x) paste(x[-1], collapse = sep), character(1)
+  )
+
+  # Human-readable label from dem_dict if available
+  dem_dict <- attr(object, "dem_dict")
+  subgroup_label <- if (!is.null(dem_dict) && by_col %in% dem_dict$item_id) {
+    row <- dem_dict[dem_dict$item_id == by_col, , drop = FALSE]
+    val <- dplyr::coalesce(row$question_short[[1]], row$question[[1]], by_col)
+    if (is.na(val)) by_col else val
+  } else {
+    by_col
+  }
+  sm$subgroup_label <- subgroup_label
+
+  dplyr::relocate(sm, "subgroup_var", "subgroup_label", "subgroup_level",
+                  .after = "country")
+}
+
+

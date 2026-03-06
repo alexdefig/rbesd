@@ -98,8 +98,8 @@ plot_besd_demographics_table <- function(dem_tbl,
                                          base_size = 12,
                                          wrap_width = 30) {
   fill_by <- match.arg(fill_by)
-  .require_cols(dem_tbl, c("country", "item_id", "response", "n", "pct"),
-                "plot_besd_demographics_table")
+  .assert_has_cols(dem_tbl, c("country", "item_id", "response", "n", "pct"),
+                   context = "plot_besd_demographics_table")
   
   dd <- dem_tbl |> dplyr::filter(as.character(.data$country) == country)
   if (!nrow(dd)) stop("No rows found for country: ", country, 

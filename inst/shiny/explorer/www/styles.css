@@ -1,0 +1,188 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   BeSD Explorer — Custom stylesheet
+   Fonts: Poppins (Google Fonts)
+   Palette: teal #008e9c (primary) · magenta #ed2290 (accent) · #1d1d22 (dark)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base typography ──────────────────────────────────────────────────────── */
+body,
+.shiny-output-error,
+input, select, textarea, button {
+  font-family: "Poppins", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Navbar ───────────────────────────────────────────────────────────────── */
+.navbar {
+  background-color: #1d1d22 !important;
+  border-bottom: 2px solid #008e9c;
+  padding: 0.55rem 1.25rem;
+}
+
+.navbar-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+.navbar-nav .nav-link {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #ccc !important;
+  padding: 0.55rem 0.9rem;
+  border-radius: 4px;
+  transition: background 0.18s, color 0.18s;
+}
+
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link.active {
+  color: #fff !important;
+  background: rgba(0, 142, 156, 0.22);
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.card {
+  border: none !important;
+  border-radius: 10px !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.09) !important;
+  overflow: hidden;
+}
+
+.card-header {
+  background: #fff !important;
+  border-bottom: 1px solid #eef0f3 !important;
+  padding: 0.7rem 1.1rem !important;
+  font-size: 0.9rem;
+  color: #1d1d22;
+}
+
+.card-footer {
+  background: #fff !important;
+  border-top: 1px solid #eef0f3 !important;
+  font-size: 0.77rem;
+  color: #6c757d;
+  padding: 0.45rem 1.1rem !important;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.bslib-sidebar-layout {
+  --bslib-sidebar-bg: #e6f4f5;
+  --_sidebar-bg:      #e6f4f5;
+}
+
+.bslib-sidebar-layout > .sidebar,
+.bslib-sidebar-layout > aside.sidebar,
+.bslib-sidebar-layout aside {
+  background-color: #e6f4f5 !important;
+  background:       #e6f4f5 !important;
+  border-right: 1px solid #eef0f3 !important;
+}
+
+/* Sidebar section labels */
+.sidebar-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8492a6;
+  margin-bottom: 0.2rem;
+  margin-top: 0.6rem;
+}
+
+/* ── Form controls ────────────────────────────────────────────────────────── */
+.selectize-input,
+.selectize-dropdown,
+select.form-control,
+.form-select {
+  font-family: "Poppins", sans-serif !important;
+  font-size: 0.87rem !important;
+  border-radius: 6px !important;
+}
+
+.selectize-input.focus,
+.selectize-input:focus-within {
+  border-color: #008e9c !important;
+  box-shadow: 0 0 0 2px rgba(0, 142, 156, 0.18) !important;
+}
+
+.form-check-input:checked {
+  background-color: #008e9c !important;
+  border-color: #008e9c !important;
+}
+
+/* ── Tab panels ───────────────────────────────────────────────────────────── */
+.tab-content {
+  padding-top: 0.9rem;
+}
+
+/* ── Leaflet map ──────────────────────────────────────────────────────────── */
+#world_map {
+  border-radius: 0 0 10px 10px;
+}
+
+#world_map .leaflet-container {
+  background-color: white !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-tooltip {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+}
+
+/* ── Plotly overrides ─────────────────────────────────────────────────────── */
+.js-plotly-plot .plotly,
+.js-plotly-plot .plotly text {
+  font-family: "Poppins", sans-serif !important;
+  font-weight: 400 !important;
+}
+
+/* Axis tick labels should never be bold */
+.js-plotly-plot .ytick text,
+.js-plotly-plot .xtick text {
+  font-weight: 400 !important;
+}
+
+/* ── Utility ──────────────────────────────────────────────────────────────── */
+.text-primary {
+  color: #008e9c !important;
+}
+
+.fw-semibold {
+  font-weight: 600;
+}
+
+/* Breathing room between layout rows */
+.bslib-gap-spacing {
+  gap: 1rem !important;
+}
+
+/* Subtle active tab highlight */
+[data-value="Country Profile"].active,
+[data-value="World Map"].active,
+[data-value="Global Comparison"].active {
+  color: #008e9c !important;
+  font-weight: 600;
+}
+
+/* ── Download button ──────────────────────────────────────────────────────── */
+.btn-outline-primary {
+  color: #008e9c !important;
+  border-color: #008e9c !important;
+}
+.btn-outline-primary:hover {
+  background-color: #008e9c !important;
+  color: #fff !important;
+}
+
+/* ── Global comparison legend dots ───────────────────────────────────────── */
+.ranked-legend {
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: #555;
+}
+
+/* ── Responsive tweaks ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .navbar-brand { font-size: 0.95rem; }
+  .card-header  { flex-wrap: wrap; }
+}

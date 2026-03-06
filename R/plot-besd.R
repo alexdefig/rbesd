@@ -63,6 +63,7 @@ plot_besd_bars <- function(sum_tbl,
         di, 
         ggplot2::aes(x = if (sort_bars) {
           reorder(.data$response, .data$pct) 
+          
         } else .data$response, y = .data$pct, fill = .data$response)) +
         ggplot2::geom_col(width = 0.8, colour = "white", linewidth = 0.3) +
         ggplot2::scale_fill_manual(values = item_pal, guide = "none") +
@@ -983,6 +984,7 @@ plot_besd_spider <- function(sum_tbl,
 
 
 #' Heuristic for selecting "top-box" responses
+#' @export
 besd_guess_topbox_levels <- function(responses,
                                      prefer_regex = c(
                                        "^Yes$",
@@ -1009,6 +1011,7 @@ besd_guess_topbox_levels <- function(responses,
 
 
 #' Build a top-box tibble from a BeSD summary tibble
+#' @export
 besd_topbox <- function(sum_tbl,
                         topbox_levels = NULL,
                         prefer_regex = c(

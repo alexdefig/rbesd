@@ -1,0 +1,894 @@
+library(shiny)
+library(bslib)
+library(leaflet)
+library(plotly)
+library(dplyr)
+library(rbesd)
+library(rnaturalearth)
+library(sf)
+library(reactable)
+
+source("R/helpers.R")
+
+# ── Theme ─────────────────────────────────────────────────────────────────────
+app_theme <- bslib::bs_theme(
+  version      = 5,
+  primary      = "#008e9c",
+  secondary    = "#ed2290",
+  success      = "#2ecc71",
+  warning      = "#f39c12",
+  "navbar-bg"  = "#1d1d22",
+  base_font    = bslib::font_google("Poppins"),
+  heading_font = bslib::font_google("Poppins"),
+  "font-size-base" = "0.93rem"
+)
+
+# ── UI ────────────────────────────────────────────────────────────────────────
+ui <- bslib::page_navbar(
+  title = shiny::tags$span(
+    shiny::tags$img(
+      src    = "imms-logo.svg",
+      height = "32px",
+      style  = "margin-right:10px; vertical-align:middle;"
+    ),
+    shiny::tags$b("BeSD", style = "color:#008e9c;"),
+    shiny::span(" Explorer", style = "color:#ffffff;")
+  ),
+  id       = "main_nav",
+  theme    = app_theme,
+  lang     = "en",
+  fillable = FALSE,
+  shiny::tags$head(
+    shiny::tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    shiny::tags$link(
+      rel  = "stylesheet",
+      href = "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+    ),
+    shiny::tags$style(
+      ".bslib-sidebar-layout { --_sidebar-bg: #e6f4f5; }
+       .bslib-sidebar-layout > .sidebar { background-color: #e6f4f5 !important; }"
+    )
+  ),
+
+  # ── Tab 1: World Map ────────────────────────────────────────────────────────
+  bslib::nav_panel(
+    title = shiny::span(shiny::icon("globe"), " Global Overview"),
+    value = "Global Overview",
+
+    bslib::card(
+      class = "border-0 shadow-sm",
+      bslib::card_header(
+        class = "d-flex align-items-center gap-3 flex-wrap",
+        shiny::div(
+          class = "fw-semibold text-dark me-auto",
+          shiny::icon("globe-africa", class = "text-primary me-1"),
+          "BeSD indicator map"
+        ),
+        shiny::div(
+          style = "min-width:300px; max-width:480px;",
+          shiny::selectInput(
+            "map_metric",
+            label   = NULL,
+            choices = map_choices,
+            width   = "100%"
+          )
+        ),
+        shiny::div(
+          style = "min-width:160px; max-width:260px;",
+          shiny::selectInput(
+            "map_level",
+            label    = NULL,
+            choices  = initial_level_choices,
+            selected = initial_level_selected,
+            width    = "100%"
+          )
+        ),
+        shiny::div(
+          class = "text-muted small",
+          shiny::icon("circle-info"), " Click a country to view its profile"
+        ),
+        shiny::div(
+          class = "w-100 text-muted",
+          style = "font-size: 0.85rem; font-weight: normal;",
+          shiny::icon("circle-info"),
+          " Item: ",
+          shiny::textOutput("map_card_question", inline = TRUE)
+        )
+      ),
+      leaflet::leafletOutput("world_map", height = "420px"),
+    ),
+
+    # ── Country Rankings (below map) ───────────────────────────────────────
+    bslib::card(
+      class       = "border-0 shadow-sm mt-3",
+      full_screen = TRUE,
+      bslib::card_header(
+        class = "d-flex align-items-center gap-2 flex-wrap",
+        shiny::icon("ranking-star", class = "text-primary me-1"),
+        shiny::span(class = "fw-semibold", "BeSD indicator rankings"),
+        shiny::div(
+          class = "w-100 text-muted",
+          style = "font-size: 0.85rem; font-weight: normal;",
+          shiny::icon("circle-info"),
+          " Item: ",
+          shiny::textOutput("map_question", inline = TRUE)
+        )
+      ),
+      plotly::plotlyOutput("ranked_plot", height = "420px")
+    )
+  ),
+
+  # ── Tab 2: Country Profile ──────────────────────────────────────────────────
+  bslib::nav_panel(
+    title = shiny::span(shiny::icon("flag"), " Country Profile"),
+    value = "Country Profile",
+
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = bslib::sidebar(
+        width = 226,
+        bg    = "#e6f4f5",
+        shiny::tags$div(class = "sidebar-label", "Country"),
+        shiny::selectInput(
+          "profile_country", label = NULL,
+          choices  = countries,
+          selected = countries[1]
+        ),
+        shiny::downloadButton(
+          "download_report",
+          label = "Download Report",
+          class = "btn-sm btn-outline-primary w-100 mt-1"
+        )
+      ),
+
+      # ── Sample composition (full width, top) ────────────────────────────────
+      bslib::card(
+        class       = "border-0 shadow-sm mb-3",
+        full_screen = TRUE,
+        bslib::card_header(
+          shiny::icon("users", class = "text-primary me-1"),
+          shiny::span(class = "fw-semibold",
+                      shiny::textOutput("title_sample", inline = TRUE))
+        ),
+        reactable::reactableOutput("demo_table", height = "397px"),
+        bslib::card_footer(
+          class = "small text-muted",
+          style = "font-weight: normal;",
+          shiny::icon("circle-info"),
+          " N varies between demographics because missing responses are excluded per variable."
+        )
+      ),
+
+      # ── Response distribution bar chart (full width) ────────────────────────
+      bslib::card(
+        class = "border-0 shadow-sm mb-3",
+        bslib::card_header(
+          class = "d-flex align-items-center gap-2 flex-wrap",
+          shiny::icon("chart-bar", class = "text-primary"),
+          shiny::span(class = "fw-semibold",
+                      shiny::textOutput("title_bar", inline = TRUE)),
+          shiny::div(
+            class = "ms-auto",
+            style = "min-width:170px; max-width:220px;",
+            shiny::selectInput(
+              "domain_filter", label = NULL,
+              choices = c(
+                "All domains"        = "all",
+                "Thinking & Feeling" = "thinking and feeling",
+                "Social Processes"   = "social processes",
+                "Practical Issues"   = "practical issues"
+              ),
+              selected = "all", width = "100%"
+            )
+          )
+        ),
+        shiny::uiOutput("bar_plot_ui")
+      ),
+
+      # ── Global comparison (6) + Radar (6) side by side ──────────────────────
+      bslib::layout_columns(
+        style = "grid-template-columns: 57fr 43fr;",
+        gap   = "1rem",
+
+        bslib::card(
+          class       = "border-0 shadow-sm",
+          full_screen = TRUE,
+          bslib::card_header(
+            class = "d-flex align-items-center gap-2 flex-wrap",
+            shiny::icon("circle-nodes", class = "text-primary me-1"),
+            shiny::span(class = "fw-semibold",
+                        shiny::textOutput("title_radar", inline = TRUE)),
+            shiny::div(
+              class = "ms-auto d-flex align-items-center gap-2",
+              shiny::tags$small("Compare:", class = "text-muted"),
+              shiny::div(
+                style = "min-width:180px;",
+                shiny::selectInput(
+                  "compare_country", label = NULL,
+                  choices  = countries,
+                  selected = NULL,
+                  multiple = TRUE,
+                  width    = "100%"
+                )
+              )
+            )
+          ),
+          shiny::uiOutput("spider_plot_ui"),
+          bslib::card_footer(
+            class = "small text-muted",
+            style = "font-weight: normal;",
+            shiny::icon("circle-info"),
+            " Values shown are the percentage selecting the highest response category for each item."
+          )
+        ),
+
+        bslib::card(
+          class = "border-0 shadow-sm",
+          bslib::card_header(
+            class = "d-flex align-items-center gap-2 flex-wrap",
+            shiny::icon("globe-africa", class = "text-primary"),
+            shiny::span(class = "fw-semibold",
+                        shiny::textOutput("title_comparison", inline = TRUE)),
+            shiny::div(
+              class = "ms-auto",
+              style = "min-width:200px; max-width:380px;",
+              shiny::selectInput(
+                "comparison_item", label = NULL,
+                choices = map_choices, width = "100%"
+              )
+            ),
+            shiny::div(
+              class = "w-100 small text-muted",
+              style = "font-weight: normal;",
+              shiny::icon("circle-info"),
+              " Item: ",
+              shiny::textOutput("comparison_question", inline = TRUE)
+            )
+          ),
+          shiny::uiOutput("comparison_plot_ui")
+        )
+      )
+    )
+  ),
+
+  # ── Tab 3: BeSD by Demographic ───────────────────────────────────────────────
+  bslib::nav_panel(
+    title = shiny::span(shiny::icon("users"), " BeSD by Demographic"),
+    value = "Demographic Breakdown",
+
+    bslib::layout_sidebar(
+        fillable = FALSE,
+        sidebar = bslib::sidebar(
+          width = 226,
+          bg    = "#e6f4f5",
+          shiny::tags$div(class = "sidebar-label", "Country"),
+          shiny::selectInput(
+            "bk_country", label = NULL,
+            choices  = countries,
+            selected = countries[1]
+          ),
+          shiny::tags$div(class = "sidebar-label", "BeSD item"),
+          shiny::selectInput(
+            "bk_item", label = NULL,
+            choices = breakdown_item_choices,
+            width   = "100%"
+          ),
+          shiny::hr(class = "my-2"),
+          shiny::tags$div(class = "sidebar-label", "Demographic variables"),
+          shiny::checkboxGroupInput(
+            "bk_dem_vars",
+            label    = NULL,
+            choices  = setNames(names(breakdown_var_meta),
+                                unname(breakdown_var_meta)),
+            selected = names(breakdown_var_meta)[1]
+          )
+        ),
+
+        shiny::div(
+          shiny::uiOutput("breakdown_panels")
+        )
+    )
+  ),
+
+)
+
+
+# ── Server ────────────────────────────────────────────────────────────────────
+server <- function(input, output, session) {
+
+  # Shared reactive: which country is in focus
+  selected_country <- shiny::reactiveVal(countries[1])
+
+  shiny::observeEvent(input$profile_country, {
+    selected_country(input$profile_country)
+  })
+
+  # ── World Map ──────────────────────────────────────────────────────────────
+
+  output$world_map <- leaflet::renderLeaflet({
+    leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
+      leaflet::addProviderTiles(
+        leaflet::providers$CartoDB.VoyagerNoLabels,
+        options = leaflet::providerTileOptions(noWrap = TRUE)
+      ) |>
+      leaflet::setView(lng = 20, lat = 15, zoom = 2) |>
+      leaflet::setMaxBounds(lng1 = -180, lat1 = -90, lng2 = 180, lat2 = 90)
+  })
+
+  # When item changes: update the level dropdown, defaulting to top-box response
+  shiny::observeEvent(input$map_metric, {
+    levs     <- item_responses(input$map_metric)
+    top_resp <- topbox_all |>
+      dplyr::filter(.data$item_id == input$map_metric) |>
+      dplyr::pull(.data$topbox_label) |>
+      unique()
+    # topbox_label may be comma-separated; take the first token
+    top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])[1]
+    sel <- if (length(top_resp) > 0 && !is.na(top_resp) && top_resp %in% levs) top_resp else levs[1]
+    shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
+  })
+
+  # When level changes (also fires after the metric-triggered update above): redraw map
+  shiny::observeEvent(input$map_level, {
+    shiny::req(nzchar(input$map_level))
+
+    scores <- map_scores(input$map_metric, input$map_level)
+
+    # Dynamic colour domain based on actual data range (min 5 pp span for legibility)
+    vals       <- scores$mean_pct[!is.na(scores$mean_pct)]
+    data_range <- if (length(vals) >= 2) range(vals) else c(0, 100)
+    span       <- max(data_range[2] - data_range[1], 5)
+    pad        <- span * 0.08
+    pal_domain <- c(max(0, data_range[1] - pad), min(100, data_range[2] + pad))
+
+    map_sf <- world_sf |>
+      dplyr::left_join(
+        scores |> dplyr::left_join(iso_lookup, by = "country"),
+        by = c("iso3" = "iso3")
+      )
+
+    pal <- leaflet::colorNumeric(
+      palette  = c("#CC278D", "#926F97", "#4F8D9A"),
+      domain   = pal_domain,
+      na.color = "#e8eaed"
+    )
+
+    # Reversed palette for legend so higher values appear at the top
+    pal_legend <- leaflet::colorNumeric(
+      palette  = rev(c("#CC278D", "#926F97", "#4F8D9A")),
+      domain   = pal_domain,
+      na.color = "#e8eaed"
+    )
+
+    leaflet::leafletProxy("world_map") |>
+      leaflet::clearShapes() |>
+      leaflet::clearControls() |>
+      leaflet::addPolygons(
+        data         = map_sf,
+        fillColor    = ~pal(mean_pct),
+        fillOpacity  = 0.82,
+        color        = "white",
+        weight       = 0.7,
+        layerId      = ~iso3,
+        label = ~lapply(
+          dplyr::if_else(
+            !is.na(mean_pct),
+            paste0("<b>", dplyr::coalesce(country, name), "</b>: ",
+                   round(mean_pct, 1), "%"),
+            name
+          ),
+          shiny::HTML
+        ),
+        labelOptions = leaflet::labelOptions(
+          style     = list("font-family" = "Poppins, sans-serif",
+                           "font-size"   = "13px",
+                           "padding"     = "5px 9px",
+                           "box-shadow"  = "0 2px 6px rgba(0,0,0,.15)"),
+          direction = "auto"
+        ),
+        highlight = leaflet::highlightOptions(
+          weight       = 2,
+          color        = "#1d1d22",
+          fillOpacity  = 0.95,
+          bringToFront = TRUE
+        )
+      ) |>
+      leaflet::addLegend(
+        pal      = pal_legend,
+        values   = pal_domain,
+        title    = paste0(input$map_level, " (%)"),
+        position = "bottomleft",
+        layerId  = "legend",
+        labFormat = leaflet::labelFormat(
+          transform = function(x) sort(x, decreasing = TRUE)
+        )
+      )
+  })
+
+  # Map click → navigate to country profile
+  shiny::observeEvent(input$world_map_shape_click, {
+    iso <- input$world_map_shape_click$id
+    cty <- iso_lookup$country[iso_lookup$iso3 == iso]
+    if (length(cty) == 1 && cty %in% countries) {
+      selected_country(cty)
+      shiny::updateSelectInput(session, "profile_country", selected = cty)
+      bslib::nav_select("main_nav", "Country Profile")
+    }
+  })
+
+  # Ranked plot click → navigate to country profile
+  shiny::observeEvent(plotly::event_data("plotly_click", source = "ranked_plot"), {
+    click <- plotly::event_data("plotly_click", source = "ranked_plot")
+    cty   <- as.character(click$y)
+    if (length(cty) == 1 && cty %in% countries) {
+      selected_country(cty)
+      shiny::updateSelectInput(session, "profile_country", selected = cty)
+      bslib::nav_select("main_nav", "Country Profile")
+    }
+  })
+
+  # ── Country Profile ────────────────────────────────────────────────────────
+
+  output$bar_country_label  <- shiny::renderText(selected_country())
+  output$title_sample       <- shiny::renderText(paste0(selected_country(), ": Sample composition"))
+  output$title_bar          <- shiny::renderText(paste0(selected_country(), ": BeSD response profile"))
+  output$title_radar        <- shiny::renderText(paste0(selected_country(), ": Radar profile"))
+  output$title_comparison   <- shiny::renderText(paste0(selected_country(), ": Global comparison"))
+
+  # Dynamic-height container for bar chart
+  output$bar_plot_ui <- shiny::renderUI({
+    h <- bar_plot_height(selected_country(), input$domain_filter)
+    plotly::plotlyOutput("bar_plot", height = paste0(h, "px"))
+  })
+
+  output$bar_plot <- plotly::renderPlotly({
+    cty <- selected_country()
+    dom <- input$domain_filter
+    dd  <- besd_sum |> dplyr::filter(.data$country == cty)
+    make_profile_bar(dd, domain_filter = dom)
+  })
+
+  # Radar (spider) chart — height matches the comparison plot for the shared row
+  output$spider_plot_ui <- shiny::renderUI({
+    h <- as.integer(max(280L, length(countries) * 28L + 60L) * 0.67)
+    plotly::plotlyOutput("spider_plot", height = paste0(h, "px"))
+  })
+
+  output$spider_plot <- plotly::renderPlotly({
+    cty        <- selected_country()
+    comp_valid <- input$compare_country[input$compare_country %in% countries]
+    ctys       <- c(cty, comp_valid)
+
+    item_info <- topbox_all |>
+      dplyr::filter(.data$country == cty) |>
+      dplyr::distinct(.data$item_id, .data$domain,
+                      .data$question_short, .data$item_id) |>
+      dplyr::arrange(.data$domain, .data$item_id)
+
+    if (nrow(item_info) == 0) {
+      return(plotly::plot_ly() |>
+               plotly::layout(title = "No data available"))
+    }
+
+    theta_raw <- sapply(
+      dplyr::coalesce(item_info$question_short, item_info$item_id),
+      function(x) paste(strwrap(x, width = 15), collapse = "\n"),
+      USE.NAMES = FALSE
+    )
+    theta_closed <- c(theta_raw, theta_raw[1])
+
+    line_colors <- c("#008e9c", "#ed2290", "#f39c12", "#9b59b6",
+                     "#27ae60", "#e74c3c", "#2980b9", "#d35400")
+    fill_colors <- c("rgba(0,142,156,0.15)",  "rgba(237,34,144,0.15)",
+                     "rgba(243,156,18,0.15)", "rgba(155,89,182,0.15)",
+                     "rgba(39,174,96,0.15)",  "rgba(231,76,60,0.15)",
+                     "rgba(41,128,185,0.15)", "rgba(211,84,0,0.15)")
+
+    fig <- plotly::plot_ly(type = "scatterpolar", mode = "lines+markers")
+
+    for (k in seq_along(ctys)) {
+      c_name  <- ctys[k]
+      col_idx <- ((k - 1L) %% length(line_colors)) + 1L
+      tb_c <- topbox_all |>
+        dplyr::filter(.data$country == c_name,
+                      .data$item_id %in% item_info$item_id) |>
+        dplyr::slice(match(item_info$item_id, .data$item_id))
+
+      r_vals <- c(tb_c$pct, tb_c$pct[1])
+
+      fig <- fig |> plotly::add_trace(
+        r             = r_vals,
+        theta         = theta_closed,
+        name          = c_name,
+        fill          = "toself",
+        fillcolor     = fill_colors[col_idx],
+        line          = list(color = line_colors[col_idx], width = 2.5),
+        marker        = list(color = line_colors[col_idx], size = 5),
+        hovertemplate = paste0(
+          "<b>", c_name, "</b> — %{theta}: %{r:.1f}%<extra></extra>"
+        )
+      )
+    }
+
+    fig |> plotly::layout(
+      polar = list(
+        radialaxis  = list(
+          visible   = TRUE,
+          range     = c(0, 100),
+          ticksuffix = "%",
+          tickfont  = list(size = 9, family = "Poppins, sans-serif"),
+          gridcolor = "#e9ecef"
+        ),
+        angularaxis = list(
+          tickfont = list(size = 9, family = "Poppins, sans-serif")
+        ),
+        bgcolor = "white"
+      ),
+      showlegend   = length(ctys) > 1,
+      legend       = list(
+        orientation    = "h",
+        x              = 0,
+        xanchor        = "left",
+        y              = -0.05,
+        entrywidth     = 0.2,
+        entrywidthmode = "fraction"
+      ),
+      font         = list(family = "Poppins, sans-serif"),
+      plot_bgcolor  = "white",
+      paper_bgcolor = "white",
+      margin        = list(l = 60, r = 60, t = 30, b = 30)
+    ) |>
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ── Global comparison (Country Profile) ───────────────────────────────────
+
+  output$comparison_plot_ui <- shiny::renderUI({
+    h <- as.integer(max(280L, length(countries) * 28L + 60L) * 0.67)
+    plotly::plotlyOutput("comparison_plot", height = paste0(h, "px"))
+  })
+
+  output$comparison_question <- shiny::renderText({
+    shiny::req(input$comparison_item)
+    q <- besd_sum |>
+      dplyr::filter(.data$item_id == input$comparison_item) |>
+      dplyr::pull(.data$question) |>
+      unique()
+    q <- q[!is.na(q) & nzchar(q)]
+    if (length(q) > 0) q[1] else input$comparison_item
+  })
+
+  output$comparison_plot <- plotly::renderPlotly({
+    shiny::req(input$comparison_item)
+    make_country_comparison_bar(
+      besd_sum      = besd_sum,
+      item_id       = input$comparison_item,
+      focal_country = selected_country()
+    )
+  })
+
+  # Demographics table
+  output$demo_table <- reactable::renderReactable({
+    cty <- selected_country()
+    dd <- demo_sum |>
+      dplyr::filter(as.character(.data$country) == cty) |>
+      dplyr::arrange(.data$item_id, dplyr::desc(.data$pct)) |>
+      dplyr::transmute(
+        variable = as.character(.data$question_short),
+        category = as.character(.data$response),
+        n        = .data$n,
+        pct      = round(.data$pct, 1)
+      )
+
+    if (nrow(dd) == 0) {
+      return(reactable::reactable(data.frame(Message = paste("No demographic data for", cty))))
+    }
+
+    reactable::reactable(
+      dd,
+      groupBy         = "variable",
+      defaultExpanded = FALSE,
+      columns = list(
+        variable = reactable::colDef(
+          name     = "Demographic",
+          minWidth = 100
+        ),
+        category = reactable::colDef(
+          name     = "Category",
+          minWidth = 140
+        ),
+        n = reactable::colDef(
+          name      = "N",
+          width     = 65,
+          align     = "right",
+          aggregate = "sum",
+          format    = reactable::colFormat(separators = TRUE)
+        ),
+        pct = reactable::colDef(
+          name      = "%",
+          width     = 65,
+          align     = "right",
+          aggregate = reactable::JS("function() { return '' }"),
+          format    = reactable::colFormat(suffix = "%", digits = 1)
+        )
+      ),
+      compact   = TRUE,
+      highlight = TRUE,
+      style     = list(fontSize = "0.82rem", fontFamily = "Poppins, sans-serif",
+                       fontWeight = "normal"),
+      theme = reactable::reactableTheme(
+        headerStyle = list(
+          fontSize      = "0.74rem",
+          fontWeight    = 600,
+          color         = "#8492a6",
+          textTransform = "uppercase",
+          letterSpacing = "0.04em"
+        )
+      ),
+      rowStyle = function(index) list(fontWeight = "normal")
+    )
+  })
+
+  # ── Download Report ────────────────────────────────────────────────────────
+
+  output$download_report <- shiny::downloadHandler(
+    filename = function() {
+      paste0("BeSD_Report_", gsub(" ", "_", selected_country()), "_",
+             format(Sys.Date(), "%Y%m%d"), ".html")
+    },
+    content = function(file) {
+      cty <- selected_country()
+
+      # The template lives alongside this app.R file
+      rmd_template <- file.path(getwd(), "report_template.Rmd")
+      # Fallback: installed package path
+      if (!file.exists(rmd_template)) {
+        rmd_template <- system.file(
+          "shiny/explorer/report_template.Rmd", package = "rbesd"
+        )
+      }
+
+      params <- list(country = cty, besd_sum = besd_sum, demo_sum = demo_sum)
+
+      rmarkdown::render(
+        input       = rmd_template,
+        output_file = file,
+        params      = params,
+        envir       = new.env(parent = globalenv()),
+        quiet       = TRUE
+      )
+    }
+  )
+
+  # ── Global Comparison ─────────────────────────────────────────────────────
+
+  # Dynamic x-axis label for ranked plot — mirrors the map level dropdown
+  ranked_xlab <- shiny::reactive({
+    lev <- input$map_level
+    if (is.null(lev) || !nzchar(lev)) return("Response (%)")
+    paste0(lev, " (%)")
+  })
+
+  map_question_text <- shiny::reactive({
+    shiny::req(input$map_metric)
+    q <- besd_sum |>
+      dplyr::filter(.data$item_id == input$map_metric) |>
+      dplyr::pull(.data$question) |>
+      unique()
+    q <- q[!is.na(q) & nzchar(q)]
+    if (length(q) > 0) q[1] else input$map_metric
+  })
+
+  output$map_card_question <- shiny::renderText(map_question_text())
+  output$map_question      <- shiny::renderText(map_question_text())
+
+  output$ranked_item_label <- shiny::renderText({
+    meta <- item_meta[item_meta$item_id == input$map_metric, ]
+    if (nrow(meta) > 0 && !is.na(meta$question_short[1])) {
+      meta$question_short[1]
+    } else {
+      input$map_metric
+    }
+  })
+
+  output$ranked_plot <- plotly::renderPlotly({
+    shiny::req(input$map_metric, input$map_level)
+
+    tb <- besd_sum |>
+      dplyr::filter(
+        .data$item_id == input$map_metric,
+        as.character(.data$response) == input$map_level
+      ) |>
+      dplyr::arrange(.data$pct) |>
+      dplyr::mutate(
+        country_f = factor(as.character(.data$country),
+                           levels = as.character(.data$country))
+      )
+
+    ci_present <- all(c("lcl", "ucl") %in% names(tb)) &&
+      any(!is.na(tb$lcl))
+
+    tb <- tb |> dplyr::mutate(
+      hover_txt = if (ci_present) {
+        paste0("<b>", .data$country, "</b>: ", round(.data$pct, 1), "%",
+               "<br>95% CI: ", round(.data$lcl, 1),
+               "\u2013", round(.data$ucl, 1), "%")
+      } else {
+        paste0("<b>", .data$country, "</b>: ", round(.data$pct, 1), "%")
+      }
+    )
+
+    if (nrow(tb) == 0) {
+      return(
+        plotly::plot_ly() |>
+          plotly::layout(title = "No data for this item")
+      )
+    }
+
+    # Per-point colours matching the map palette
+    vals       <- tb$pct[!is.na(tb$pct)]
+    data_range <- if (length(vals) >= 2) range(vals) else c(0, 100)
+    span       <- max(data_range[2] - data_range[1], 5)
+    pad        <- span * 0.08
+    col_domain <- c(max(0, data_range[1] - pad), min(100, data_range[2] + pad))
+    col_fn     <- grDevices::colorRampPalette(c("#CC278D", "#926F97", "#4F8D9A"))
+    col_pal    <- col_fn(256L)
+    tb <- tb |> dplyr::mutate(
+      pt_color = {
+        idx <- round((pct - col_domain[1]) / (col_domain[2] - col_domain[1]) * 255) + 1L
+        col_pal[pmax(1L, pmin(256L, idx))]
+      }
+    )
+
+    global_mean <- mean(tb$pct, na.rm = TRUE)
+    xlab        <- ranked_xlab()
+
+    fig <- plotly::plot_ly(source = "ranked_plot")
+
+    # CI bars — one segment per country so each gets its own literal colour
+    if (ci_present) {
+      for (i in seq_len(nrow(tb))) {
+        fig <- fig |> plotly::add_segments(
+          x         = tb$lcl[i], xend = tb$ucl[i],
+          y         = as.character(tb$country_f[i]),
+          yend      = as.character(tb$country_f[i]),
+          line      = list(color = tb$pt_color[i], width = 3),
+          hoverinfo = "none",
+          showlegend = FALSE
+        )
+      }
+    }
+
+    # Points
+    fig <- fig |> plotly::add_markers(
+      data          = tb,
+      x             = ~pct, y = ~country_f,
+      marker        = list(color = ~pt_color, size = 9),
+      text          = ~hover_txt,
+      hovertemplate = "%{text}<extra></extra>",
+      showlegend    = FALSE
+    )
+
+    # Global mean line + label
+    fig |> plotly::layout(
+      shapes = list(list(
+        type  = "line",
+        layer = "below",
+        x0    = global_mean, x1 = global_mean,
+        y0    = 0, y1 = 1, yref = "paper",
+        line  = list(color = "#aaa", dash = "dash", width = 1.5)
+      )),
+      annotations = list(list(
+        x        = global_mean + 1, y = 0.97,
+        xref     = "x", yref = "paper",
+        text     = paste0("Mean: ", round(global_mean, 1), "%"),
+        showarrow = FALSE,
+        xanchor  = "left",
+        yanchor  = "top",
+        font     = list(color = "#999", size = 10,
+                        family = "Poppins, sans-serif")
+      )),
+      xaxis = list(
+        title    = xlab,
+        range    = c(0, 100),
+        showgrid = FALSE,
+        zeroline = FALSE
+      ),
+      yaxis = list(
+        title         = "",
+        categoryorder = "array",
+        categoryarray = levels(tb$country_f),
+        automargin    = TRUE,
+        showgrid      = FALSE,
+        tickfont      = list(size = 11, family = "Poppins, sans-serif")
+      ),
+      font          = list(family = "Poppins, sans-serif"),
+      plot_bgcolor  = "white",
+      paper_bgcolor = "white",
+      showlegend    = FALSE,
+      margin        = list(l = 20, r = 20, t = 10, b = 50)
+    ) |>
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ── BeSD by Demographic tab ───────────────────────────────────────────────
+
+  # Render one card per checked demographic variable, each with its own plot
+  output$breakdown_panels <- shiny::renderUI({
+    vars <- input$bk_dem_vars
+    if (is.null(vars) || length(vars) == 0) {
+      return(shiny::p(class = "text-muted mt-3",
+                      "Select at least one demographic variable in the sidebar."))
+    }
+
+    lapply(vars, function(var) {
+      plot_id <- paste0("bk_plot_", var)
+      lbl     <- unname(breakdown_var_meta[var])
+      lbl     <- if (length(lbl) == 1 && !is.na(lbl)) lbl else var
+
+      # Height based on how many groups exist for this var in the selected country
+      n_levels <- breakdown_sum |>
+        dplyr::filter(as.character(.data$country) == input$bk_country,
+                      .data$subgroup_var == var) |>
+        dplyr::pull(.data$subgroup_level) |>
+        unique() |>
+        length()
+      h <- max(126, n_levels * 39 + 70)
+
+      bslib::card(
+        class = "border-0 shadow-sm mb-3",
+        bslib::card_header(
+          class = "d-flex align-items-center gap-2 flex-wrap",
+          shiny::icon("chart-bar", class = "text-primary"),
+          shiny::tags$span(class = "fw-semibold", lbl),
+          shiny::div(
+            class = "w-100 small text-muted",
+            style = "font-weight: normal;",
+            shiny::icon("circle-info"),
+            " Item: ",
+            shiny::textOutput(paste0("bk_n_label_", var), inline = TRUE)
+          )
+        ),
+        plotly::plotlyOutput(plot_id, height = paste0(h, "px"))
+      )
+    })
+  })
+
+  # Pre-register outputs for every known demographic variable at startup.
+  # Using req() to only render when the var is actually checked avoids the
+  # "already assigned" error that occurs if outputs are registered dynamically.
+  for (.bk_var in names(breakdown_var_meta)) {
+    local({
+      local_var <- .bk_var
+      plot_id   <- paste0("bk_plot_",    local_var)
+      label_id  <- paste0("bk_n_label_", local_var)
+
+      output[[plot_id]] <- plotly::renderPlotly({
+        shiny::req(input$bk_country, input$bk_item, input$bk_dem_vars)
+        shiny::req(local_var %in% input$bk_dem_vars)
+        make_breakdown_bar(
+          breakdown_data = breakdown_sum,
+          country        = input$bk_country,
+          item_id        = input$bk_item,
+          subgroup_var   = local_var
+        )
+      })
+
+      output[[label_id]] <- shiny::renderText({
+        shiny::req(input$bk_country, input$bk_item)
+        dd <- breakdown_sum |>
+          dplyr::filter(
+            as.character(.data$country) == input$bk_country,
+            as.character(.data$item_id) == input$bk_item,
+            .data$subgroup_var == local_var
+          )
+        q <- unique(dd$question)
+        q <- q[!is.na(q) & nzchar(as.character(q))]
+        if (length(q) > 0) q[1] else input$bk_item
+      })
+    })
+  }
+}
+
+
+shiny::shinyApp(ui, server)
