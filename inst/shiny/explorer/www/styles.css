@@ -65,15 +65,15 @@ input, select, textarea, button {
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
 .bslib-sidebar-layout {
-  --bslib-sidebar-bg: #e6f4f5;
-  --_sidebar-bg:      #e6f4f5;
+  --bslib-sidebar-bg: #f4f4f4;
+  --_sidebar-bg:      #f4f4f4;
 }
 
 .bslib-sidebar-layout > .sidebar,
 .bslib-sidebar-layout > aside.sidebar,
 .bslib-sidebar-layout aside {
-  background-color: #e6f4f5 !important;
-  background:       #e6f4f5 !important;
+  background-color: #f4f4f4 !important;
+  background:       #f4f4f4 !important;
   border-right: 1px solid #eef0f3 !important;
 }
 
@@ -115,6 +115,10 @@ select.form-control,
 }
 
 /* ── Leaflet map ──────────────────────────────────────────────────────────── */
+.leaflet-control.info.legend {
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+
 #world_map {
   border-radius: 0 0 10px 10px;
 }

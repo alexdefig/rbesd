@@ -45,8 +45,8 @@ ui <- bslib::page_navbar(
       href = "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
     ),
     shiny::tags$style(
-      ".bslib-sidebar-layout { --_sidebar-bg: #e6f4f5; }
-       .bslib-sidebar-layout > .sidebar { background-color: #e6f4f5 !important; }"
+      ".bslib-sidebar-layout { --_sidebar-bg: #f4f4f4; }
+       .bslib-sidebar-layout > .sidebar { background-color: #f4f4f4 !important; }"
     )
   ),
 
@@ -127,7 +127,7 @@ ui <- bslib::page_navbar(
       fillable = FALSE,
       sidebar = bslib::sidebar(
         width = 226,
-        bg    = "#e6f4f5",
+        bg    = "#f4f4f4",
         shiny::tags$div(class = "sidebar-label", "Country"),
         shiny::selectInput(
           "profile_country", label = NULL,
@@ -260,12 +260,18 @@ ui <- bslib::page_navbar(
         fillable = FALSE,
         sidebar = bslib::sidebar(
           width = 226,
-          bg    = "#e6f4f5",
-          shiny::tags$div(class = "sidebar-label", "Country"),
-          shiny::selectInput(
-            "bk_country", label = NULL,
-            choices  = countries,
-            selected = countries[1]
+          bg    = "#f4f4f4",
+          shiny::tags$div(class = "sidebar-label", "Countries"),
+          shiny::checkboxInput("bk_all_countries", "Show all countries",
+                               value = FALSE),
+          shiny::conditionalPanel(
+            condition = "!input.bk_all_countries",
+            shiny::selectInput(
+              "bk_country", label = NULL,
+              choices  = countries,
+              selected = countries[1],
+              multiple = TRUE
+            )
           ),
           shiny::tags$div(class = "sidebar-label", "BeSD item"),
           shiny::selectInput(
@@ -353,7 +359,9 @@ server <- function(input, output, session) {
       na.color = "#e8eaed"
     )
 
-    # Reversed palette for legend so higher values appear at the top
+    # Reversed palette for the legend so higher values appear at the top.
+    # Leaflet renders its continuous colorbar max-at-bottom by default; reversing
+    # the palette and the labels together corrects the visual direction.
     pal_legend <- leaflet::colorNumeric(
       palette  = rev(c("#CC278D", "#926F97", "#4F8D9A")),
       domain   = pal_domain,
@@ -366,7 +374,7 @@ server <- function(input, output, session) {
       leaflet::addPolygons(
         data         = map_sf,
         fillColor    = ~pal(mean_pct),
-        fillOpacity  = 0.82,
+        fillOpacity  = 1,
         color        = "white",
         weight       = 0.7,
         layerId      = ~iso3,
@@ -399,6 +407,7 @@ server <- function(input, output, session) {
         title    = paste0(input$map_level, " (%)"),
         position = "bottomleft",
         layerId  = "legend",
+        opacity  = 1,
         labFormat = leaflet::labelFormat(
           transform = function(x) sort(x, decreasing = TRUE)
         )
@@ -572,7 +581,7 @@ server <- function(input, output, session) {
     cty <- selected_country()
     dd <- demo_sum |>
       dplyr::filter(as.character(.data$country) == cty) |>
-      dplyr::arrange(.data$item_id, dplyr::desc(.data$pct)) |>
+      dplyr::arrange(.data$item_id, .data$response) |>
       dplyr::transmute(
         variable = as.character(.data$question_short),
         category = as.character(.data$response),
@@ -813,80 +822,96 @@ server <- function(input, output, session) {
 
   # ── BeSD by Demographic tab ───────────────────────────────────────────────
 
-  # Render one card per checked demographic variable, each with its own plot
+  # Render one card per (demographic variable × country) combination
   output$breakdown_panels <- shiny::renderUI({
     vars <- input$bk_dem_vars
+    ctys <- if (isTRUE(input$bk_all_countries)) countries else input$bk_country
     if (is.null(vars) || length(vars) == 0) {
       return(shiny::p(class = "text-muted mt-3",
                       "Select at least one demographic variable in the sidebar."))
     }
+    if (is.null(ctys) || length(ctys) == 0) {
+      return(shiny::p(class = "text-muted mt-3",
+                      "Select at least one country in the sidebar."))
+    }
 
-    lapply(vars, function(var) {
-      plot_id <- paste0("bk_plot_", var)
-      lbl     <- unname(breakdown_var_meta[var])
-      lbl     <- if (length(lbl) == 1 && !is.na(lbl)) lbl else var
+    cards <- list()
+    for (var in vars) {
+      lbl <- unname(breakdown_var_meta[var])
+      lbl <- if (length(lbl) == 1 && !is.na(lbl)) lbl else var
 
-      # Height based on how many groups exist for this var in the selected country
-      n_levels <- breakdown_sum |>
-        dplyr::filter(as.character(.data$country) == input$bk_country,
-                      .data$subgroup_var == var) |>
-        dplyr::pull(.data$subgroup_level) |>
-        unique() |>
-        length()
-      h <- max(126, n_levels * 39 + 70)
+      for (cty in ctys) {
+        san_cty  <- gsub("[^a-zA-Z0-9]", "_", cty)
+        plot_id  <- paste0("bk_plot_",    san_cty, "_", var)
+        label_id <- paste0("bk_n_label_", san_cty, "_", var)
 
-      bslib::card(
-        class = "border-0 shadow-sm mb-3",
-        bslib::card_header(
-          class = "d-flex align-items-center gap-2 flex-wrap",
-          shiny::icon("chart-bar", class = "text-primary"),
-          shiny::tags$span(class = "fw-semibold", lbl),
-          shiny::div(
-            class = "w-100 small text-muted",
-            style = "font-weight: normal;",
-            shiny::icon("circle-info"),
-            " Item: ",
-            shiny::textOutput(paste0("bk_n_label_", var), inline = TRUE)
-          )
-        ),
-        plotly::plotlyOutput(plot_id, height = paste0(h, "px"))
-      )
-    })
+        n_levels <- breakdown_sum |>
+          dplyr::filter(as.character(.data$country) == cty,
+                        .data$subgroup_var == var) |>
+          dplyr::pull(.data$subgroup_level) |>
+          unique() |>
+          length()
+        h <- n_levels * 51 + 60
+
+        cards[[length(cards) + 1]] <- bslib::card(
+          class = "border-0 shadow-sm mb-3",
+          bslib::card_header(
+            class = "d-flex align-items-center gap-2 flex-wrap",
+            shiny::icon("chart-bar", class = "text-primary"),
+            shiny::tags$span(class = "fw-semibold", lbl),
+            shiny::tags$span(class = "ms-auto text-muted", cty),
+            shiny::div(
+              class = "w-100 text-muted",
+              style = "font-size: 0.85rem; font-weight: normal;",
+              shiny::icon("circle-info"),
+              " Item: ",
+              shiny::textOutput(label_id, inline = TRUE)
+            )
+          ),
+          plotly::plotlyOutput(plot_id, height = paste0(h, "px"))
+        )
+      }
+    }
+    do.call(shiny::tagList, cards)
   })
 
-  # Pre-register outputs for every known demographic variable at startup.
-  # Using req() to only render when the var is actually checked avoids the
-  # "already assigned" error that occurs if outputs are registered dynamically.
-  for (.bk_var in names(breakdown_var_meta)) {
-    local({
-      local_var <- .bk_var
-      plot_id   <- paste0("bk_plot_",    local_var)
-      label_id  <- paste0("bk_n_label_", local_var)
+  # Pre-register outputs for every known country × demographic variable at startup.
+  # req() ensures a plot only renders when its country and var are actually selected.
+  for (.bk_cty in countries) {
+    for (.bk_var in names(breakdown_var_meta)) {
+      local({
+        local_cty <- .bk_cty
+        local_var <- .bk_var
+        san_cty   <- gsub("[^a-zA-Z0-9]", "_", local_cty)
+        plot_id   <- paste0("bk_plot_",    san_cty, "_", local_var)
+        label_id  <- paste0("bk_n_label_", san_cty, "_", local_var)
 
-      output[[plot_id]] <- plotly::renderPlotly({
-        shiny::req(input$bk_country, input$bk_item, input$bk_dem_vars)
-        shiny::req(local_var %in% input$bk_dem_vars)
-        make_breakdown_bar(
-          breakdown_data = breakdown_sum,
-          country        = input$bk_country,
-          item_id        = input$bk_item,
-          subgroup_var   = local_var
-        )
-      })
-
-      output[[label_id]] <- shiny::renderText({
-        shiny::req(input$bk_country, input$bk_item)
-        dd <- breakdown_sum |>
-          dplyr::filter(
-            as.character(.data$country) == input$bk_country,
-            as.character(.data$item_id) == input$bk_item,
-            .data$subgroup_var == local_var
+        output[[plot_id]] <- plotly::renderPlotly({
+          shiny::req(input$bk_item, input$bk_dem_vars)
+          active_ctys <- if (isTRUE(input$bk_all_countries)) countries else input$bk_country
+          shiny::req(local_cty %in% active_ctys, local_var %in% input$bk_dem_vars)
+          make_breakdown_bar(
+            breakdown_data = breakdown_sum,
+            country        = local_cty,
+            item_id        = input$bk_item,
+            subgroup_var   = local_var
           )
-        q <- unique(dd$question)
-        q <- q[!is.na(q) & nzchar(as.character(q))]
-        if (length(q) > 0) q[1] else input$bk_item
+        })
+
+        output[[label_id]] <- shiny::renderText({
+          shiny::req(input$bk_item)
+          dd <- breakdown_sum |>
+            dplyr::filter(
+              as.character(.data$country) == local_cty,
+              as.character(.data$item_id) == input$bk_item,
+              .data$subgroup_var          == local_var
+            )
+          q <- unique(dd$question)
+          q <- q[!is.na(q) & nzchar(as.character(q))]
+          if (length(q) > 0) q[1] else input$bk_item
+        })
       })
-    })
+    }
   }
 }
 

@@ -22,7 +22,8 @@ item_meta <- topbox_all |>
   stats::setNames(rows$item_id, rows$question_short)
 }
 
-domains_present <- unique(item_meta$domain[!is.na(item_meta$domain)])
+domains_present <- c("thinking and feeling", "social processes", "practical issues") |>
+  (\(ord) ord[ord %in% unique(item_meta$domain[!is.na(item_meta$domain)])])()
 
 map_choices <- stats::setNames(
   lapply(domains_present, .make_optgroup),
@@ -492,6 +493,7 @@ make_breakdown_bar <- function(breakdown_data, country, item_id, subgroup_var) {
 
   fig |> plotly::layout(
     barmode     = "stack",
+    bargap      = 0.25,
     xaxis = list(
       title      = "",
       range      = c(0, 118),
