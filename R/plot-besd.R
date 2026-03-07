@@ -1,4 +1,45 @@
 #' Bar plots for BeSD response distributions
+#'
+#' Produces stacked (multi-country) or single-country horizontal bar charts
+#' summarising response distributions for all non-multichoice BeSD items.
+#' For a single country, items are combined into a patchwork figure grouped by
+#' domain; for multiple countries, one plot is returned per item.  Multichoice
+#' items can optionally be included via \code{include_multichoice}.
+#'
+#' @param sum_tbl A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param include_item_types Character vector of item types to include.
+#'   Default \code{c("binary", "ordinal", "categorical", "unknown")}.
+#' @param include_multichoice Logical; if \code{TRUE}, multichoice items are
+#'   also plotted (delegated to an internal helper).  Default \code{FALSE}.
+#' @param sort_bars Logical; if \code{TRUE}, countries (multi-country mode) or
+#'   response options (single-country mode) are ordered by descending
+#'   percentage.  Default \code{FALSE}.
+#' @param palette Optional colour palette override passed to
+#'   \code{.as_palette()}.  If \code{NULL}, the package default is used.
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
+#' @param label_pct Logical; if \code{TRUE} (default), percentage labels are
+#'   printed on bars.
+#' @param label_min Numeric; minimum percentage below which bar labels are
+#'   suppressed to avoid clutter.  Default \code{6}.
+#' @param wrap_width Integer; maximum character width for wrapping item
+#'   question labels.  Default \code{50}.
+#' @param combine_domains Logical; reserved for future use.  Default
+#'   \code{FALSE}.
+#'
+#' @return A named list of \code{ggplot2} objects.  In single-country mode the
+#'   list contains one combined \code{patchwork} figure keyed by country name;
+#'   in multi-country mode it contains one plot per item ID.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "country")
+#' s <- summary(x)
+#' # Single country
+#' plots <- plot_besd_bars(s[s$country == "Brazil", ])
+#' # All countries, sorted
+#' plots <- plot_besd_bars(s, sort_bars = TRUE)
+#'
 #' @export
 plot_besd_bars <- function(sum_tbl,
                            include_item_types = c("binary", "ordinal", 
@@ -527,7 +568,54 @@ plot_besd_bars <- function(sum_tbl,
 }
 
 
-#' Spider (radar) plot for BeSD top-box by country
+#' Spider (radar) chart of BeSD top-box scores by country
+#'
+#' Draws a radar/spider chart of top-box percentages across BeSD items.
+#' Supports single-country, multi-country faceted, and overlay (all countries
+#' on one spider) display modes.  Domain background wedges are drawn when
+#' domain metadata is present.
+#'
+#' @param sum_tbl A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param compare Character vector of country names to include, or one of the
+#'   special values \code{"all"} (default; plots all countries) or
+#'   \code{"mean"} (plots \code{focal_country} against the mean of all others).
+#' @param focal_country Optional character string; a country to highlight.  In
+#'   facet mode only this country is shown; in overlay mode it is rendered in
+#'   dark with other countries coloured.
+#' @param topbox_levels Optional named list passed to \code{besd_topbox()} to
+#'   override automatic top-box response detection per item.
+#' @param item_ids Optional character vector; restricts the chart to the
+#'   specified item IDs.
+#' @param palette Optional colour palette for comparison countries.  If
+#'   \code{NULL}, the package default is used.
+#' @param base_size Numeric; base font size (points).  Default \code{12}.
+#' @param wrap_width Integer; maximum character width for axis label wrapping.
+#'   Default \code{22}.
+#' @param ncol Integer; number of columns when faceting multiple countries.
+#'   Default \code{3}.
+#' @param spider_scale Numeric (0, 1]; scales the radar polygon radius
+#'   relative to the plot area, leaving room for axis labels.  Default
+#'   \code{0.80}.
+#' @param label_padding Numeric; distance between the outer ring and item axis
+#'   labels.  Default \code{12}.
+#' @param outer_padding Numeric; distance from axis labels to the plot
+#'   boundary.  Default \code{12}.
+#' @param facet_padding Numeric; horizontal spacing between facet panels in
+#'   \code{"lines"} units.  Default \code{1.2}.
+#' @param overlay Logical; if \code{TRUE}, all selected countries are drawn on
+#'   a single spider instead of being faceted.  Default \code{FALSE}.
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "country")
+#' s <- summary(x)
+#' # Single country
+#' plot_besd_spider(s, focal_country = "Brazil")
+#' # Overlay comparison
+#' plot_besd_spider(s, compare = c("Brazil", "Canada"), overlay = TRUE)
+#'
 #' @export
 plot_besd_spider <- function(sum_tbl,
                              compare = "all",
@@ -983,45 +1071,61 @@ plot_besd_spider <- function(sum_tbl,
 }
 
 
-#' Heuristic for selecting "top-box" responses
+#' Heuristic identification of top-box response levels
+#'
+#' Applies a sequence of regular expressions to a vector of response labels to
+#' identify the most positive (top-box) response(s).  Used internally by
+#' \code{besd_topbox()} but also available for direct use or testing.
+#'
+#' @param responses A character or factor vector of response option labels.
+#'
+#' @return A character vector containing the top-box response label(s): the
+#'   last level for ordered or unordered factors, or the last unique value for
+#'   plain character vectors.
+#'
+#' @examples
+#' besd_guess_topbox_levels(c("No", "Unsure", "Yes"))
+#' besd_guess_topbox_levels(c("Disagree", "Neutral", "Agree", "Strongly agree"))
+#'
 #' @export
-besd_guess_topbox_levels <- function(responses,
-                                     prefer_regex = c(
-                                       "^Yes$",
-                                       "Strongly agree|Completely agree",
-                                       "Agree a lot|Agree",
-                                       "Very likely|Definitely",
-                                       "A lot|High"
-                                     )) {
-  r <- unique(as.character(responses))
-  if (!length(r)) return(character())
-  
-  if (is.factor(responses) && isTRUE(attr(responses, "ordered"))) {
-    return(tail(levels(responses), 1))
-  }
-  
-  for (pat in prefer_regex) {
-    hit <- r[grepl(pat, r, ignore.case = TRUE)]
-    if (length(hit)) return(hit)
-  }
-  
+besd_guess_topbox_levels <- function(responses) {
+  if (!length(responses)) return(character())
   if (is.factor(responses)) return(tail(levels(responses), 1))
-  tail(r, 1)
+  tail(unique(as.character(responses)), 1)
 }
 
 
-#' Build a top-box tibble from a BeSD summary tibble
+#' Compute top-box percentages from a BeSD summary tibble
+#'
+#' Collapses a full response-distribution summary into a single top-box
+#' percentage per country × item, respecting the \code{reverse} flag in the
+#' item dictionary (reversed items use the most negative response as the
+#' "positive" indicator).  Wilson-score 95\% confidence intervals are appended.
+#'
+#' @param sum_tbl A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param topbox_levels Optional named list mapping item IDs to character
+#'   vectors of response labels that should be counted as top-box.  Overrides
+#'   automatic detection for the named items.
+#' @param include_item_types Character vector of item types to retain before
+#'   computing top-box scores.  Multichoice items are always excluded.
+#'   Default \code{c("binary", "ordinal", "categorical", "unknown")}.
+#'
+#' @return A tibble with one row per country × item containing columns
+#'   \code{country}, \code{item_id}, \code{pct} (top-box \%), \code{lcl},
+#'   \code{ucl} (95\% CI bounds), \code{topbox_label}, \code{question_short},
+#'   and domain metadata.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "country")
+#' s <- summary(x)
+#' tb <- besd_topbox(s)
+#' tb
+#'
 #' @export
 besd_topbox <- function(sum_tbl,
                         topbox_levels = NULL,
-                        prefer_regex = c(
-                          "^Yes$",
-                          "Strongly agree|Completely agree",
-                          "Agree a lot|Agree",
-                          "Very likely|Definitely",
-                          "A lot|High"
-                        ),
-                        include_item_types = c("binary", "ordinal", 
+                        include_item_types = c("binary", "ordinal",
                                                "categorical", "unknown")) {
   .assert_besd_summary_tbl(sum_tbl, fn = "besd_topbox")
   sum_tbl <- .coerce_country(sum_tbl)
@@ -1072,7 +1176,7 @@ besd_topbox <- function(sum_tbl,
     }
     
     # Default behavior: pick top-box normally
-    besd_guess_topbox_levels(levs, prefer_regex = prefer_regex)
+    besd_guess_topbox_levels(levs)
   }
   
   item_levels$topbox <- mapply(pick_levels, item_levels$item_id, 

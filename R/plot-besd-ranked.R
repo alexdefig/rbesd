@@ -5,18 +5,29 @@
 #' reference line marks the global mean, and a focal country can be
 #' highlighted in a contrasting colour.
 #'
-#' @param besd_sum A \code{besd_summary_tbl}.
+#' @param besd_sum A \code{besd_summary_tbl} (output of \code{summary()}).
 #' @param item_id  A single item ID string (must match \code{besd_sum$item_id}).
 #'   Mutually exclusive with \code{domain}.
 #' @param domain   A domain string (e.g. \code{"thinking and feeling"}).
-#'   When supplied, countries are ranked by their mean top-box % across all
+#'   When supplied, countries are ranked by their mean top-box \% across all
 #'   items in that domain.  Mutually exclusive with \code{item_id}.
-#' @param highlight_country Optional country name to highlight in red.
-#' @param show_ci  Logical; draw 95 \% CI error bars when available.
-#'   Default \code{TRUE}.
-#' @param base_size Base font size passed to \code{besd_theme()}.
+#' @param highlight_country Optional character string; name of a country to
+#'   highlight with a red dot and stem.
+#' @param show_ci  Logical; if \code{TRUE} (default), horizontal 95\% CI error
+#'   bars are drawn when \code{lcl}/\code{ucl} columns are present.
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
 #'
 #' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "ADM1")
+#' s <- summary(x)
+#' plot_besd_ranked(s, item_id = "tf_benefits")
+#' plot_besd_ranked(s, domain = "thinking and feeling",
+#'                  highlight_country = "Brazil")
+#'
 #' @export
 plot_besd_ranked <- function(besd_sum,
                               item_id           = NULL,

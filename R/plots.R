@@ -3,7 +3,34 @@
 
 # ---- Multichoice plots ------------------------------------------------------
 
-#' Bar plots for multichoice summary items
+#' Bar plots for multichoice BeSD items
+#'
+#' Produces bar charts summarising the response distributions of multichoice
+#' BeSD items (e.g. reasons for low access, service quality issues).  For a
+#' single country, all items are combined into one faceted plot.  For multiple
+#' countries, a separate plot is returned for each item.
+#'
+#' @param sum_tbl A \code{besd_summary_tbl} containing one or more multichoice
+#'   items (i.e. rows where \code{item_type == "multichoice"}).
+#' @param item_ids Optional character vector of item IDs to include.  If
+#'   \code{NULL} (default), all multichoice items in \code{sum_tbl} are plotted.
+#' @param top_n Integer; maximum number of response options to display per item
+#'   per country, selected by highest mean percentage.  Default \code{10}.
+#' @param palette Optional colour palette passed to \code{.as_palette()}.  If
+#'   \code{NULL}, the package default is used.
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
+#' @param wrap_width Integer; maximum character width for item label wrapping.
+#'   Default \code{32}.
+#'
+#' @return A named list of \code{ggplot2} objects, one per item ID.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "ADM1")
+#' s <- summary(x)
+#' plots <- plot_besd_multichoice_bars(s)
+#'
 #' @export
 plot_besd_multichoice_bars <- function(sum_tbl,
                                        item_ids = NULL,
@@ -55,8 +82,7 @@ plot_besd_multichoice_bars <- function(sum_tbl,
         ggplot2::ggplot(di, ggplot2::aes(y = .data$response, 
                                          x = .data$pct)) +
           ggplot2::geom_col(width = 0.75, fill = "grey30") +
-          ggplot2::geom_text(ggplot2::aes(label = sprintf("%.0f%%", 
-                                                          .data$pct)),
+          ggplot2::geom_text(ggplot2::aes(label = sprintf("%.0f%%",  .data$pct)),
                              hjust = -0.05, size = base_size * 0.28) +
           ggplot2::scale_x_continuous(labels = function(x) paste0(x, "%"),
                                       limits = c(0, 100)) +
@@ -87,7 +113,41 @@ plot_besd_multichoice_bars <- function(sum_tbl,
 
 # ---- Demographics table plot ------------------------------------------------
 
-#' Plot a demographic summary as a "pretty table"
+#' Heatmap table of demographic composition for one country
+#'
+#' Renders a tile-based heatmap showing response counts and percentages for
+#' each demographic variable for a single country.  Cells are optionally
+#' shaded by percentage to aid visual scanning.
+#'
+#' @param dem_tbl A demographic summary tibble, as returned by
+#'   \code{besd_summary_demographics()}.  Must contain columns
+#'   \code{country}, \code{item_id}, \code{response}, \code{n}, and
+#'   \code{pct}.
+#' @param country Character string; the country to display.
+#' @param max_levels Integer; maximum number of response levels to show per
+#'   demographic variable.  Additional levels are dropped.  Default \code{12}.
+#' @param sort_by_pct Logical; if \code{TRUE} (default), levels within each
+#'   variable are ordered by descending percentage.  If \code{FALSE}, ordered
+#'   alphabetically by response label.
+#' @param fill_by One of \code{"pct"} (default) or \code{"none"}.  When
+#'   \code{"pct"}, tiles are filled with a white-to-teal gradient proportional
+#'   to the cell percentage.  When \code{"none"}, tiles are uniform grey.
+#' @param fill_high Character; hex colour for the high end of the fill
+#'   gradient.  Default \code{"#4F8D9A"} (teal).
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
+#' @param wrap_width Integer; maximum character width for wrapping item ID
+#'   labels on the x-axis.  Default \code{30}.
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x   <- as_besd(data_demo, country_col = "ADM1", dem_dict = dem_dictionary())
+#' s   <- summary(x)
+#' dem <- besd_summary_demographics(s)
+#' plot_besd_demographics_table(dem, country = "Brazil")
+#'
 #' @export
 plot_besd_demographics_table <- function(dem_tbl,
                                          country,
