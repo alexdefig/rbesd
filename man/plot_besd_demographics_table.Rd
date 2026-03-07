@@ -2,7 +2,7 @@
 % Please edit documentation in R/plots.R
 \name{plot_besd_demographics_table}
 \alias{plot_besd_demographics_table}
-\title{Plot a demographic summary as a "pretty table"}
+\title{Heatmap table of demographic composition for one country}
 \usage{
 plot_besd_demographics_table(
   dem_tbl,
@@ -15,6 +15,47 @@ plot_besd_demographics_table(
   wrap_width = 30
 )
 }
+\arguments{
+\item{dem_tbl}{A demographic summary tibble, as returned by
+\code{besd_summary_demographics()}.  Must contain columns
+\code{country}, \code{item_id}, \code{response}, \code{n}, and
+\code{pct}.}
+
+\item{country}{Character string; the country to display.}
+
+\item{max_levels}{Integer; maximum number of response levels to show per
+demographic variable.  Additional levels are dropped.  Default \code{12}.}
+
+\item{sort_by_pct}{Logical; if \code{TRUE} (default), levels within each
+variable are ordered by descending percentage.  If \code{FALSE}, ordered
+alphabetically by response label.}
+
+\item{fill_by}{One of \code{"pct"} (default) or \code{"none"}.  When
+\code{"pct"}, tiles are filled with a white-to-teal gradient proportional
+to the cell percentage.  When \code{"none"}, tiles are uniform grey.}
+
+\item{fill_high}{Character; hex colour for the high end of the fill
+gradient.  Default \code{"#4F8D9A"} (teal).}
+
+\item{base_size}{Numeric; base font size (points) passed to
+\code{besd_theme()}. Default \code{12}.}
+
+\item{wrap_width}{Integer; maximum character width for wrapping item ID
+labels on the x-axis.  Default \code{30}.}
+}
+\value{
+A \code{ggplot2} object.
+}
 \description{
-Plot a demographic summary as a "pretty table"
+Renders a tile-based heatmap showing response counts and percentages for
+each demographic variable for a single country.  Cells are optionally
+shaded by percentage to aid visual scanning.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x   <- as_besd(data_demo, country_col = "ADM1", dem_dict = dem_dictionary())
+s   <- summary(x)
+dem <- besd_summary_demographics(s)
+plot_besd_demographics_table(dem, country = "Brazil")
+
 }

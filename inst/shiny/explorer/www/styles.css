@@ -185,6 +185,12 @@ select.form-control,
   color: #555;
 }
 
+/* ── Radar zoom: allow scaled plot to overflow its card ──────────────────── */
+#spider_plot {
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+
 /* ── Responsive tweaks ────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .navbar-brand { font-size: 0.95rem; }

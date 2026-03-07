@@ -441,6 +441,12 @@ make_breakdown_bar <- function(breakdown_data, country, item_id, subgroup_var) {
     grp_order <- sort(unique(as.character(dd$subgroup_level)))
   }
 
+  # Wrap long y-axis labels for display (plotly uses <br> for line breaks)
+  wrap_label <- function(x) paste(strwrap(x, width = 30), collapse = "<br>")
+  all_levels <- unique(as.character(dd$subgroup_level))
+  wrap_map   <- stats::setNames(vapply(all_levels, wrap_label, character(1)),
+                                all_levels)
+
   # N per subgroup level (constant across responses for a given group)
   n_per_grp <- dd |>
     dplyr::distinct(.data$subgroup_level, .data$n) |>
@@ -457,7 +463,7 @@ make_breakdown_bar <- function(breakdown_data, country, item_id, subgroup_var) {
 
     fig <- fig |> plotly::add_trace(
       x                = pct_val,
-      y                = as.character(dr$subgroup_level),
+      y                = wrap_map[as.character(dr$subgroup_level)],
       type             = "bar",
       orientation      = "h",
       name             = resp,
@@ -479,7 +485,7 @@ make_breakdown_bar <- function(breakdown_data, country, item_id, subgroup_var) {
   annotations <- lapply(seq_len(nrow(n_per_grp)), function(i) {
     list(
       x         = 102,
-      y         = n_per_grp$subgroup_level[i],
+      y         = wrap_map[n_per_grp$subgroup_level[i]],
       text      = paste0("n=", n_per_grp$n[i]),
       showarrow = FALSE,
       xref      = "x", yref = "y",
@@ -505,7 +511,7 @@ make_breakdown_bar <- function(breakdown_data, country, item_id, subgroup_var) {
     yaxis = list(
       title         = "",
       categoryorder = "array",
-      categoryarray = grp_order,
+      categoryarray = wrap_map[grp_order],
       automargin    = TRUE,
       tickfont      = list(size = 10, family = "Poppins, sans-serif")
     ),

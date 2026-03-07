@@ -2,14 +2,25 @@
 % Please edit documentation in R/plot-besd.R
 \name{besd_guess_topbox_levels}
 \alias{besd_guess_topbox_levels}
-\title{Heuristic for selecting "top-box" responses}
+\title{Heuristic identification of top-box response levels}
 \usage{
-besd_guess_topbox_levels(
-  responses,
-  prefer_regex = c("^Yes$", "Strongly agree|Completely agree", "Agree a lot|Agree",
-    "Very likely|Definitely", "A lot|High")
-)
+besd_guess_topbox_levels(responses)
+}
+\arguments{
+\item{responses}{A character or factor vector of response option labels.}
+}
+\value{
+A character vector containing the top-box response label(s): the
+last level for ordered or unordered factors, or the last unique value for
+plain character vectors.
 }
 \description{
-Heuristic for selecting "top-box" responses
+Applies a sequence of regular expressions to a vector of response labels to
+identify the most positive (top-box) response(s).  Used internally by
+\code{besd_topbox()} but also available for direct use or testing.
+}
+\examples{
+besd_guess_topbox_levels(c("No", "Unsure", "Yes"))
+besd_guess_topbox_levels(c("Disagree", "Neutral", "Agree", "Strongly agree"))
+
 }

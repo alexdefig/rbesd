@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot-besd.R
 \name{plot_besd_spider}
 \alias{plot_besd_spider}
-\title{Spider (radar) plot for BeSD top-box by country}
+\title{Spider (radar) chart of BeSD top-box scores by country}
 \usage{
 plot_besd_spider(
   sum_tbl,
@@ -21,6 +21,66 @@ plot_besd_spider(
   overlay = FALSE
 )
 }
+\arguments{
+\item{sum_tbl}{A \code{besd_summary_tbl} (output of \code{summary()}).}
+
+\item{compare}{Character vector of country names to include, or one of the
+special values \code{"all"} (default; plots all countries) or
+\code{"mean"} (plots \code{focal_country} against the mean of all others).}
+
+\item{focal_country}{Optional character string; a country to highlight.  In
+facet mode only this country is shown; in overlay mode it is rendered in
+dark with other countries coloured.}
+
+\item{topbox_levels}{Optional named list passed to \code{besd_topbox()} to
+override automatic top-box response detection per item.}
+
+\item{item_ids}{Optional character vector; restricts the chart to the
+specified item IDs.}
+
+\item{palette}{Optional colour palette for comparison countries.  If
+\code{NULL}, the package default is used.}
+
+\item{base_size}{Numeric; base font size (points).  Default \code{12}.}
+
+\item{wrap_width}{Integer; maximum character width for axis label wrapping.
+Default \code{22}.}
+
+\item{ncol}{Integer; number of columns when faceting multiple countries.
+Default \code{3}.}
+
+\item{spider_scale}{Numeric (0, 1]; scales the radar polygon radius
+relative to the plot area, leaving room for axis labels.  Default
+\code{0.80}.}
+
+\item{label_padding}{Numeric; distance between the outer ring and item axis
+labels.  Default \code{12}.}
+
+\item{outer_padding}{Numeric; distance from axis labels to the plot
+boundary.  Default \code{12}.}
+
+\item{facet_padding}{Numeric; horizontal spacing between facet panels in
+\code{"lines"} units.  Default \code{1.2}.}
+
+\item{overlay}{Logical; if \code{TRUE}, all selected countries are drawn on
+a single spider instead of being faceted.  Default \code{FALSE}.}
+}
+\value{
+A \code{ggplot2} object.
+}
 \description{
-Spider (radar) plot for BeSD top-box by country
+Draws a radar/spider chart of top-box percentages across BeSD items.
+Supports single-country, multi-country faceted, and overlay (all countries
+on one spider) display modes.  Domain background wedges are drawn when
+domain metadata is present.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x <- as_besd(data_demo, country_col = "country")
+s <- summary(x)
+# Single country
+plot_besd_spider(s, focal_country = "Brazil")
+# Overlay comparison
+plot_besd_spider(s, compare = c("Brazil", "Canada"), overlay = TRUE)
+
 }

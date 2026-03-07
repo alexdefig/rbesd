@@ -2,16 +2,42 @@
 % Please edit documentation in R/plot-besd.R
 \name{besd_topbox}
 \alias{besd_topbox}
-\title{Build a top-box tibble from a BeSD summary tibble}
+\title{Compute top-box percentages from a BeSD summary tibble}
 \usage{
 besd_topbox(
   sum_tbl,
   topbox_levels = NULL,
-  prefer_regex = c("^Yes$", "Strongly agree|Completely agree", "Agree a lot|Agree",
-    "Very likely|Definitely", "A lot|High"),
   include_item_types = c("binary", "ordinal", "categorical", "unknown")
 )
 }
+\arguments{
+\item{sum_tbl}{A \code{besd_summary_tbl} (output of \code{summary()}).}
+
+\item{topbox_levels}{Optional named list mapping item IDs to character
+vectors of response labels that should be counted as top-box.  Overrides
+automatic detection for the named items.}
+
+\item{include_item_types}{Character vector of item types to retain before
+computing top-box scores.  Multichoice items are always excluded.
+Default \code{c("binary", "ordinal", "categorical", "unknown")}.}
+}
+\value{
+A tibble with one row per country × item containing columns
+\code{country}, \code{item_id}, \code{pct} (top-box \\%), \code{lcl},
+\code{ucl} (95\\% CI bounds), \code{topbox_label}, \code{question_short},
+and domain metadata.
+}
 \description{
-Build a top-box tibble from a BeSD summary tibble
+Collapses a full response-distribution summary into a single top-box
+percentage per country × item, respecting the \code{reverse} flag in the
+item dictionary (reversed items use the most negative response as the
+"positive" indicator).  Wilson-score 95\\% confidence intervals are appended.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x <- as_besd(data_demo, country_col = "country")
+s <- summary(x)
+tb <- besd_topbox(s)
+tb
+
 }

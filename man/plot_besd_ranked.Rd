@@ -14,21 +14,23 @@ plot_besd_ranked(
 )
 }
 \arguments{
-\item{besd_sum}{A \code{besd_summary_tbl}.}
+\item{besd_sum}{A \code{besd_summary_tbl} (output of \code{summary()}).}
 
 \item{item_id}{A single item ID string (must match \code{besd_sum$item_id}).
 Mutually exclusive with \code{domain}.}
 
 \item{domain}{A domain string (e.g. \code{"thinking and feeling"}).
-When supplied, countries are ranked by their mean top-box \% across all
+When supplied, countries are ranked by their mean top-box \\% across all
 items in that domain.  Mutually exclusive with \code{item_id}.}
 
-\item{highlight_country}{Optional country name to highlight in red.}
+\item{highlight_country}{Optional character string; name of a country to
+highlight with a red dot and stem.}
 
-\item{show_ci}{Logical; draw 95 \\% CI error bars when available.
-Default \code{TRUE}.}
+\item{show_ci}{Logical; if \code{TRUE} (default), horizontal 95\\% CI error
+bars are drawn when \code{lcl}/\code{ucl} columns are present.}
 
-\item{base_size}{Base font size passed to \code{besd_theme()}.}
+\item{base_size}{Numeric; base font size (points) passed to
+\code{besd_theme()}. Default \code{12}.}
 }
 \value{
 A \code{ggplot2} object.
@@ -38,4 +40,13 @@ Produces a horizontal lollipop chart with all countries ranked by
 top-box percentage for a single item or domain average.  An optional
 reference line marks the global mean, and a focal country can be
 highlighted in a contrasting colour.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x <- as_besd(data_demo, country_col = "ADM1")
+s <- summary(x)
+plot_besd_ranked(s, item_id = "tf_benefits")
+plot_besd_ranked(s, domain = "thinking and feeling",
+                 highlight_country = "Brazil")
+
 }

@@ -17,6 +17,56 @@ plot_besd_bars(
   combine_domains = FALSE
 )
 }
+\arguments{
+\item{sum_tbl}{A \code{besd_summary_tbl} (output of \code{summary()}).}
+
+\item{include_item_types}{Character vector of item types to include.
+Default \code{c("binary", "ordinal", "categorical", "unknown")}.}
+
+\item{include_multichoice}{Logical; if \code{TRUE}, multichoice items are
+also plotted (delegated to an internal helper).  Default \code{FALSE}.}
+
+\item{sort_bars}{Logical; if \code{TRUE}, countries (multi-country mode) or
+response options (single-country mode) are ordered by descending
+percentage.  Default \code{FALSE}.}
+
+\item{palette}{Optional colour palette override passed to
+\code{.as_palette()}.  If \code{NULL}, the package default is used.}
+
+\item{base_size}{Numeric; base font size (points) passed to
+\code{besd_theme()}. Default \code{12}.}
+
+\item{label_pct}{Logical; if \code{TRUE} (default), percentage labels are
+printed on bars.}
+
+\item{label_min}{Numeric; minimum percentage below which bar labels are
+suppressed to avoid clutter.  Default \code{6}.}
+
+\item{wrap_width}{Integer; maximum character width for wrapping item
+question labels.  Default \code{50}.}
+
+\item{combine_domains}{Logical; reserved for future use.  Default
+\code{FALSE}.}
+}
+\value{
+A named list of \code{ggplot2} objects.  In single-country mode the
+list contains one combined \code{patchwork} figure keyed by country name;
+in multi-country mode it contains one plot per item ID.
+}
 \description{
-Bar plots for BeSD response distributions
+Produces stacked (multi-country) or single-country horizontal bar charts
+summarising response distributions for all non-multichoice BeSD items.
+For a single country, items are combined into a patchwork figure grouped by
+domain; for multiple countries, one plot is returned per item.  Multichoice
+items can optionally be included via \code{include_multichoice}.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x <- as_besd(data_demo, country_col = "country")
+s <- summary(x)
+# Single country
+plots <- plot_besd_bars(s[s$country == "Brazil", ])
+# All countries, sorted
+plots <- plot_besd_bars(s, sort_bars = TRUE)
+
 }

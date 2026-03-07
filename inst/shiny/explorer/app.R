@@ -47,7 +47,16 @@ ui <- bslib::page_navbar(
     shiny::tags$style(
       ".bslib-sidebar-layout { --_sidebar-bg: #f4f4f4; }
        .bslib-sidebar-layout > .sidebar { background-color: #f4f4f4 !important; }"
-    )
+    ),
+    shiny::tags$script(shiny::HTML(
+      "Shiny.addCustomMessageHandler('radarZoom', function(scale) {
+        var el = document.getElementById('spider_plot');
+        if (el) {
+          el.style.transform = 'scale(' + scale + ')';
+          el.style.transformOrigin = 'top center';
+        }
+      });"
+    ))
   ),
 
   # ── Tab 1: World Map ────────────────────────────────────────────────────────
@@ -210,6 +219,15 @@ ui <- bslib::page_navbar(
                   multiple = TRUE,
                   width    = "100%"
                 )
+              ),
+              shiny::tags$div(
+                class = "btn-group btn-group-sm",
+                shiny::actionButton("radar_zoom_in",  "+",
+                                    class = "btn btn-outline-secondary",
+                                    style = "padding: 2px 8px; font-weight: 600;"),
+                shiny::actionButton("radar_zoom_out", "\u2212",
+                                    class = "btn btn-outline-secondary",
+                                    style = "padding: 2px 8px; font-weight: 600;")
               )
             )
           ),
@@ -307,6 +325,8 @@ server <- function(input, output, session) {
 
   shiny::observeEvent(input$profile_country, {
     selected_country(input$profile_country)
+    radar_scale(1.0)
+    session$sendCustomMessage("radarZoom", 1.0)
   })
 
   # ── World Map ──────────────────────────────────────────────────────────────
@@ -457,6 +477,19 @@ server <- function(input, output, session) {
     make_profile_bar(dd, domain_filter = dom)
   })
 
+  # Radar zoom: CSS transform scale on the whole figure
+  radar_scale <- shiny::reactiveVal(1.0)
+
+  shiny::observeEvent(input$radar_zoom_in, {
+    radar_scale(min(2.0, radar_scale() + 0.15))
+    session$sendCustomMessage("radarZoom", radar_scale())
+  })
+
+  shiny::observeEvent(input$radar_zoom_out, {
+    radar_scale(max(0.5, radar_scale() - 0.15))
+    session$sendCustomMessage("radarZoom", radar_scale())
+  })
+
   # Radar (spider) chart — height matches the comparison plot for the shared row
   output$spider_plot_ui <- shiny::renderUI({
     h <- as.integer(max(280L, length(countries) * 28L + 60L) * 0.67)
@@ -538,9 +571,7 @@ server <- function(input, output, session) {
         orientation    = "h",
         x              = 0,
         xanchor        = "left",
-        y              = -0.05,
-        entrywidth     = 0.2,
-        entrywidthmode = "fraction"
+        y              = -0.05
       ),
       font         = list(family = "Poppins, sans-serif"),
       plot_bgcolor  = "white",

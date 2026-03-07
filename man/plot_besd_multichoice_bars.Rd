@@ -2,7 +2,7 @@
 % Please edit documentation in R/plots.R
 \name{plot_besd_multichoice_bars}
 \alias{plot_besd_multichoice_bars}
-\title{Bar plots for multichoice summary items}
+\title{Bar plots for multichoice BeSD items}
 \usage{
 plot_besd_multichoice_bars(
   sum_tbl,
@@ -13,6 +13,38 @@ plot_besd_multichoice_bars(
   wrap_width = 32
 )
 }
+\arguments{
+\item{sum_tbl}{A \code{besd_summary_tbl} containing one or more multichoice
+items (i.e. rows where \code{item_type == "multichoice"}).}
+
+\item{item_ids}{Optional character vector of item IDs to include.  If
+\code{NULL} (default), all multichoice items in \code{sum_tbl} are plotted.}
+
+\item{top_n}{Integer; maximum number of response options to display per item
+per country, selected by highest mean percentage.  Default \code{10}.}
+
+\item{palette}{Optional colour palette passed to \code{.as_palette()}.  If
+\code{NULL}, the package default is used.}
+
+\item{base_size}{Numeric; base font size (points) passed to
+\code{besd_theme()}. Default \code{12}.}
+
+\item{wrap_width}{Integer; maximum character width for item label wrapping.
+Default \code{32}.}
+}
+\value{
+A named list of \code{ggplot2} objects, one per item ID.
+}
 \description{
-Bar plots for multichoice summary items
+Produces bar charts summarising the response distributions of multichoice
+BeSD items (e.g. reasons for low access, service quality issues).  For a
+single country, all items are combined into one faceted plot.  For multiple
+countries, a separate plot is returned for each item.
+}
+\examples{
+data("data_demo", package = "rbesd")
+x <- as_besd(data_demo, country_col = "ADM1")
+s <- summary(x)
+plots <- plot_besd_multichoice_bars(s)
+
 }
