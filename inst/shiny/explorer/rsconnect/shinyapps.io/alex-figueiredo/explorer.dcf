@@ -1,0 +1,10 @@
+name: explorer
+title:
+username: alex-figueiredo
+account: alex-figueiredo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16840272
+bundleId: 11678008
+url: https://alex-figueiredo.shinyapps.io/explorer/
+version: 1

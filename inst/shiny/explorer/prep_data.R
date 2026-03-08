@@ -58,9 +58,12 @@ breakdown_sum <- dplyr::bind_rows(lapply(dem_vars, function(v) {
 # ── 4. Save to the app data directory ─────────────────────────────────────────
 out_dir <- system.file("shiny/explorer/data", package = "rbesd")
 
+topbox_all <- rbesd::besd_topbox(besd_sum)
+
 saveRDS(besd_sum,      file.path(out_dir, "besd_sum.rds"))
 saveRDS(demo_sum,      file.path(out_dir, "demo_sum.rds"))
 saveRDS(breakdown_sum, file.path(out_dir, "breakdown_sum.rds"))
+saveRDS(topbox_all,    file.path(out_dir, "topbox_all.rds"))
 
 message("Saved besd_sum.rds, demo_sum.rds, and breakdown_sum.rds to ", out_dir)
 

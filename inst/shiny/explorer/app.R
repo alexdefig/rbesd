@@ -46,7 +46,8 @@ ui <- bslib::page_navbar(
     ),
     shiny::tags$style(
       ".bslib-sidebar-layout { --_sidebar-bg: #f4f4f4; }
-       .bslib-sidebar-layout > .sidebar { background-color: #f4f4f4 !important; }"
+       .bslib-sidebar-layout > .sidebar { background-color: #f4f4f4 !important; }
+      "
     ),
     shiny::tags$script(shiny::HTML(
       "Shiny.addCustomMessageHandler('radarZoom', function(scale) {
@@ -143,10 +144,16 @@ ui <- bslib::page_navbar(
           choices  = countries,
           selected = countries[1]
         ),
+        shiny::tags$div(class = "sidebar-label mt-2", "Report format"),
+        shiny::selectInput(
+          "report_format", label = NULL,
+          choices = c("HTML" = "html", "PDF" = "pdf"),
+          width = "100%"
+        ),
         shiny::downloadButton(
           "download_report",
           label = "Download Report",
-          class = "btn-sm btn-outline-primary w-100 mt-1"
+          class = "btn-sm btn-outline-primary w-100"
         )
       ),
 
@@ -332,13 +339,12 @@ server <- function(input, output, session) {
   # ── World Map ──────────────────────────────────────────────────────────────
 
   output$world_map <- leaflet::renderLeaflet({
-    leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
-      leaflet::addProviderTiles(
-        leaflet::providers$CartoDB.VoyagerNoLabels,
-        options = leaflet::providerTileOptions(noWrap = TRUE)
-      ) |>
+    layers <- make_map_layers(.initial_item_id, initial_level_selected)
+    base <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
+      leaflet::addProviderTiles(leaflet::providers$CartoDB.VoyagerNoLabels) |>
       leaflet::setView(lng = 20, lat = 15, zoom = 2) |>
       leaflet::setMaxBounds(lng1 = -180, lat1 = -90, lng2 = 180, lat2 = 90)
+    apply_map_layers(base, layers)
   })
 
   # When item changes: update the level dropdown, defaulting to top-box response
@@ -354,85 +360,15 @@ server <- function(input, output, session) {
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
   })
 
-  # When level changes (also fires after the metric-triggered update above): redraw map
+  # When level changes: redraw map (ignoreInit avoids double-render on startup)
   shiny::observeEvent(input$map_level, {
     shiny::req(nzchar(input$map_level))
-
-    scores <- map_scores(input$map_metric, input$map_level)
-
-    # Dynamic colour domain based on actual data range (min 5 pp span for legibility)
-    vals       <- scores$mean_pct[!is.na(scores$mean_pct)]
-    data_range <- if (length(vals) >= 2) range(vals) else c(0, 100)
-    span       <- max(data_range[2] - data_range[1], 5)
-    pad        <- span * 0.08
-    pal_domain <- c(max(0, data_range[1] - pad), min(100, data_range[2] + pad))
-
-    map_sf <- world_sf |>
-      dplyr::left_join(
-        scores |> dplyr::left_join(iso_lookup, by = "country"),
-        by = c("iso3" = "iso3")
-      )
-
-    pal <- leaflet::colorNumeric(
-      palette  = c("#CC278D", "#926F97", "#4F8D9A"),
-      domain   = pal_domain,
-      na.color = "#e8eaed"
-    )
-
-    # Reversed palette for the legend so higher values appear at the top.
-    # Leaflet renders its continuous colorbar max-at-bottom by default; reversing
-    # the palette and the labels together corrects the visual direction.
-    pal_legend <- leaflet::colorNumeric(
-      palette  = rev(c("#CC278D", "#926F97", "#4F8D9A")),
-      domain   = pal_domain,
-      na.color = "#e8eaed"
-    )
-
-    leaflet::leafletProxy("world_map") |>
+    layers <- make_map_layers(input$map_metric, input$map_level)
+    proxy  <- leaflet::leafletProxy("world_map") |>
       leaflet::clearShapes() |>
-      leaflet::clearControls() |>
-      leaflet::addPolygons(
-        data         = map_sf,
-        fillColor    = ~pal(mean_pct),
-        fillOpacity  = 1,
-        color        = "white",
-        weight       = 0.7,
-        layerId      = ~iso3,
-        label = ~lapply(
-          dplyr::if_else(
-            !is.na(mean_pct),
-            paste0("<b>", dplyr::coalesce(country, name), "</b>: ",
-                   round(mean_pct, 1), "%"),
-            name
-          ),
-          shiny::HTML
-        ),
-        labelOptions = leaflet::labelOptions(
-          style     = list("font-family" = "Poppins, sans-serif",
-                           "font-size"   = "13px",
-                           "padding"     = "5px 9px",
-                           "box-shadow"  = "0 2px 6px rgba(0,0,0,.15)"),
-          direction = "auto"
-        ),
-        highlight = leaflet::highlightOptions(
-          weight       = 2,
-          color        = "#1d1d22",
-          fillOpacity  = 0.95,
-          bringToFront = TRUE
-        )
-      ) |>
-      leaflet::addLegend(
-        pal      = pal_legend,
-        values   = pal_domain,
-        title    = paste0(input$map_level, " (%)"),
-        position = "bottomleft",
-        layerId  = "legend",
-        opacity  = 1,
-        labFormat = leaflet::labelFormat(
-          transform = function(x) sort(x, decreasing = TRUE)
-        )
-      )
-  })
+      leaflet::clearControls()
+    apply_map_layers(proxy, layers)
+  }, ignoreInit = TRUE)
 
   # Map click → navigate to country profile
   shiny::observeEvent(input$world_map_shape_click, {
@@ -464,18 +400,65 @@ server <- function(input, output, session) {
   output$title_radar        <- shiny::renderText(paste0(selected_country(), ": Radar profile"))
   output$title_comparison   <- shiny::renderText(paste0(selected_country(), ": Global comparison"))
 
-  # Dynamic-height container for bar chart
+  # Dynamic-height container(s) for bar chart
+  # When "all domains" is selected, render one plot per domain stacked vertically.
   output$bar_plot_ui <- shiny::renderUI({
-    h <- bar_plot_height(selected_country(), input$domain_filter)
-    plotly::plotlyOutput("bar_plot", height = paste0(h, "px"))
+    cty <- selected_country()
+    if (input$domain_filter == "all") {
+      domain_ids <- c(
+        "thinking and feeling" = "bar_plot_tf",
+        "social processes"     = "bar_plot_sp",
+        "practical issues"     = "bar_plot_pi"
+      )
+      domain_labels <- c(
+        "thinking and feeling" = "Thinking & Feeling",
+        "social processes"     = "Social Processes",
+        "practical issues"     = "Practical Issues"
+      )
+      plots <- lapply(names(domain_ids), function(dom) {
+        h <- bar_plot_height(cty, dom)
+        shiny::tagList(
+          shiny::tags$p(
+            class = "fw-semibold text-muted mb-1 mt-2",
+            style = "font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;",
+            domain_labels[[dom]]
+          ),
+          plotly::plotlyOutput(domain_ids[[dom]], height = paste0(h, "px"))
+        )
+      })
+      do.call(shiny::tagList, plots)
+    } else {
+      h <- bar_plot_height(cty, input$domain_filter)
+      plotly::plotlyOutput("bar_plot", height = paste0(h, "px"))
+    }
   })
 
+  # Single-domain plot (used when a specific domain is selected)
   output$bar_plot <- plotly::renderPlotly({
+    shiny::req(input$domain_filter != "all")
     cty <- selected_country()
-    dom <- input$domain_filter
     dd  <- besd_sum |> dplyr::filter(.data$country == cty)
-    make_profile_bar(dd, domain_filter = dom)
+    make_profile_bar(dd, domain_filter = input$domain_filter)
   })
+
+  # Per-domain plots (used when "all domains" is selected)
+  domain_plot_map <- list(
+    bar_plot_tf = "thinking and feeling",
+    bar_plot_sp = "social processes",
+    bar_plot_pi = "practical issues"
+  )
+  for (.pid in names(domain_plot_map)) {
+    local({
+      pid        <- .pid
+      dom_name   <- domain_plot_map[[pid]]
+      output[[pid]] <- plotly::renderPlotly({
+        shiny::req(input$domain_filter == "all")
+        cty <- selected_country()
+        dd  <- besd_sum |> dplyr::filter(.data$country == cty)
+        make_profile_bar(dd, domain_filter = dom_name)
+      })
+    })
+  }
 
   # Radar zoom: CSS transform scale on the whole figure
   radar_scale <- shiny::reactiveVal(1.0)
@@ -673,29 +656,37 @@ server <- function(input, output, session) {
 
   output$download_report <- shiny::downloadHandler(
     filename = function() {
+      ext <- if (isTRUE(input$report_format == "pdf")) ".pdf" else ".html"
       paste0("BeSD_Report_", gsub(" ", "_", selected_country()), "_",
-             format(Sys.Date(), "%Y%m%d"), ".html")
+             format(Sys.Date(), "%Y%m%d"), ext)
     },
     content = function(file) {
       cty <- selected_country()
+      fmt <- if (isTRUE(input$report_format == "pdf")) "pdf_document" else "html_document"
 
-      # The template lives alongside this app.R file
       rmd_template <- file.path(getwd(), "report_template.Rmd")
-      # Fallback: installed package path
       if (!file.exists(rmd_template)) {
         rmd_template <- system.file(
           "shiny/explorer/report_template.Rmd", package = "rbesd"
         )
       }
 
-      params <- list(country = cty, besd_sum = besd_sum, demo_sum = demo_sum)
+      params <- list(
+        country           = cty,
+        besd_sum          = besd_sum,
+        demo_sum          = demo_sum,
+        domain_filter     = input$domain_filter,
+        compare_countries = input$compare_country[input$compare_country %in% countries],
+        comparison_item   = input$comparison_item
+      )
 
       rmarkdown::render(
-        input       = rmd_template,
-        output_file = file,
-        params      = params,
-        envir       = new.env(parent = globalenv()),
-        quiet       = TRUE
+        input         = rmd_template,
+        output_format = fmt,
+        output_file   = file,
+        params        = params,
+        envir         = new.env(parent = globalenv()),
+        quiet         = TRUE
       )
     }
   )

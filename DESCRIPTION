@@ -48,8 +48,8 @@ Suggests:
     sf (>= 1.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-URL: https://github.com/your-org/rbesd
-BugReports: https://github.com/your-org/rbesd/issues
+URL: https://github.com/alexdefig/rbesd
+BugReports: https://github.com/alexdefig/rbesd/issues
 Depends: 
     R (>= 3.5)
 LazyData: true

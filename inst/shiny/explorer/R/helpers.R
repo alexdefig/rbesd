@@ -9,7 +9,7 @@ breakdown_sum <- if (file.exists("data/breakdown_sum.rds"))
   readRDS("data/breakdown_sum.rds") else tibble::tibble()
 
 # ── 2. Pre-compute top-box ────────────────────────────────────────────────────
-topbox_all <- rbesd::besd_topbox(besd_sum)
+topbox_all <- readRDS("data/topbox_all.rds")
 countries  <- sort(unique(as.character(besd_sum$country)))
 
 # ── 3. Dropdown choices (item-level only, grouped by domain) ──────────────────
@@ -39,7 +39,86 @@ world_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") |>
   dplyr::filter(.data$iso3 != "-99") |>
   dplyr::select("iso3", "name", "geometry")
 
-# ── 5. Map score resolver ─────────────────────────────────────────────────────
+# ── 5. Map helpers ────────────────────────────────────────────────────────────
+
+# Build the palette, joined sf, and legend params for a given metric + level.
+# Returns a list used by both the initial renderLeaflet and leafletProxy updates.
+make_map_layers <- function(metric, level) {
+  scores     <- map_scores(metric, level)
+  vals       <- scores$mean_pct[!is.na(scores$mean_pct)]
+  data_range <- if (length(vals) >= 2) range(vals) else c(0, 100)
+  span       <- max(data_range[2] - data_range[1], 5)
+  pad        <- span * 0.08
+  pal_domain <- c(max(0, data_range[1] - pad), min(100, data_range[2] + pad))
+
+  map_sf <- world_sf |>
+    dplyr::left_join(
+      scores |> dplyr::left_join(iso_lookup, by = "country"),
+      by = c("iso3" = "iso3")
+    )
+
+  pal <- leaflet::colorNumeric(
+    palette  = c("#CC278D", "#926F97", "#4F8D9A"),
+    domain   = pal_domain,
+    na.color = "#e8eaed"
+  )
+  pal_legend <- leaflet::colorNumeric(
+    palette  = rev(c("#CC278D", "#926F97", "#4F8D9A")),
+    domain   = pal_domain,
+    na.color = "#e8eaed"
+  )
+
+  list(map_sf = map_sf, pal = pal, pal_legend = pal_legend,
+       pal_domain = pal_domain, level = level)
+}
+
+# Apply polygon + legend layers to a leaflet map or proxy.
+apply_map_layers <- function(lf, layers) {
+  lf |>
+    leaflet::addPolygons(
+      data         = layers$map_sf,
+      fillColor    = ~layers$pal(mean_pct),
+      fillOpacity  = 1,
+      color        = "white",
+      weight       = 0.7,
+      layerId      = ~iso3,
+      label = ~lapply(
+        dplyr::if_else(
+          !is.na(mean_pct),
+          paste0("<b>", dplyr::coalesce(country, name), "</b>: ",
+                 round(mean_pct, 1), "%"),
+          name
+        ),
+        shiny::HTML
+      ),
+      labelOptions = leaflet::labelOptions(
+        style     = list("font-family" = "Poppins, sans-serif",
+                         "font-size"   = "13px",
+                         "padding"     = "5px 9px",
+                         "box-shadow"  = "0 2px 6px rgba(0,0,0,.15)"),
+        direction = "auto"
+      ),
+      highlight = leaflet::highlightOptions(
+        weight       = 2,
+        color        = "#1d1d22",
+        fillOpacity  = 0.95,
+        bringToFront = TRUE
+      )
+    ) |>
+    leaflet::addLegend(
+      pal      = layers$pal_legend,
+      values   = layers$pal_domain,
+      title    = paste0(layers$level, " (%)"),
+      position = "bottomleft",
+      layerId  = "legend",
+      opacity  = 1,
+      labFormat = leaflet::labelFormat(
+        transform = function(x) sort(x, decreasing = TRUE)
+      )
+    )
+}
+
+# Map score resolver ───────────────────────────────────────────────────────────
 
 # Return the ordered response levels for a given item_id.
 # Respects factor ordering if response_key is present, otherwise orders by
@@ -111,15 +190,11 @@ make_profile_bar <- function(besd_sum_cty, domain_filter = "all") {
     )
   }
 
-  # Item ordering: domain then item_id
-  if ("domain" %in% names(dd) && any(!is.na(dd$domain))) {
-    item_order <- dd |>
-      dplyr::distinct(.data$item_id, .data$domain) |>
-      dplyr::arrange(.data$domain, .data$item_id) |>
-      dplyr::pull(.data$item_id)
-  } else {
-    item_order <- unique(dd$item_id)
-  }
+  # Item ordering: by item_id within the (already domain-filtered) data
+  item_order <- dd |>
+    dplyr::distinct(.data$item_id) |>
+    dplyr::arrange(.data$item_id) |>
+    dplyr::pull(.data$item_id)
 
   # Helper: get per-item response ordering respecting besd_dict factor levels
   get_resp_levels <- function(di) {

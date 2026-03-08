@@ -1,0 +1,10 @@
+Package: explorer
+Version: 0.0.1
+Depends: R (>= 4.0)
+Imports:
+  rbesd,
+  rnaturalearthdata,
+  rnaturalearth,
+  sf
+Remotes:
+  alexdefig/rbesd@dev/shiny-explorer
