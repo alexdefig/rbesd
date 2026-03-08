@@ -7,6 +7,7 @@ library(rbesd)
 library(rnaturalearth)
 library(sf)
 library(reactable)
+library(shinyjs)
 
 source("R/helpers.R")
 
@@ -38,6 +39,7 @@ ui <- bslib::page_navbar(
   theme    = app_theme,
   lang     = "en",
   fillable = FALSE,
+  shinyjs::useShinyjs(),
   shiny::tags$head(
     shiny::tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
     shiny::tags$link(
@@ -326,6 +328,23 @@ ui <- bslib::page_navbar(
 
 # ── Server ────────────────────────────────────────────────────────────────────
 server <- function(input, output, session) {
+
+  # Auto-close session after 2 minutes of user inactivity
+  shinyjs::runjs("
+    var idleTime = 0;
+    setInterval(function() {
+      idleTime++;
+      if (idleTime >= 2) {
+        Shiny.setInputValue('timeoutInput', true);
+      }
+    }, 60000);
+    $(document).on('mousemove keypress click scroll', function() {
+      idleTime = 0;
+    });
+  ")
+  shiny::observeEvent(input$timeoutInput, {
+    session$close()
+  })
 
   # Shared reactive: which country is in focus
   selected_country <- shiny::reactiveVal(countries[1])

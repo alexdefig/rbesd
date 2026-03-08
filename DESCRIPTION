@@ -39,6 +39,7 @@ Suggests:
     rmarkdown,
     testthat (>= 3.0.0),
     shiny (>= 1.8.0),
+    shinyjs (>= 2.1.0),
     bslib (>= 0.7.0),
     leaflet (>= 2.2.0),
     reactable (>= 0.4.0),
