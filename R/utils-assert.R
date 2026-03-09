@@ -2,10 +2,13 @@
 # ── utils-assert.R ─────────────────────────────────────────────────────────────
 # Small internal assertion utilities used across the package. None are exported.
 #
-# .assert_besd()             – stop if `x` is not a `besd_data` object
-# .assert_valid_dict()       - stop if `x` not a valid dictionary
-# .assert_has_cols()         – stop if required columns are absent from a data frame
-# .assert_is_scalar_string() – stop if `x` is not a non-empty length-1 string
+# .assert_besd()                  – stop if `x` is not a `besd_data` object
+# .assert_valid_dict()            – stop if `x` not a valid dictionary
+# .assert_has_cols()              – stop if required columns are absent from a data frame
+# .assert_is_scalar_string()      – stop if `x` is not a non-empty length-1 string
+# .assert_besd_fit()              – stop if `x` is not a besd_fit/besd_fit_by_country
+# .assert_besd_fitted()           – stop if `x` is not a besd_fitted object
+# .assert_besd_poststrat_frame()  – stop if `x` is not a besd_poststrat_frame object
 
 
 # Assert that an object inherits from `besd_data`.
@@ -138,4 +141,35 @@
     stop("`", nm, "` must be a single finite numeric.", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+
+# Assert that `x` is a besd_fit or besd_fit_by_country object.
+.assert_besd_fit <- function(x, nm = deparse(substitute(x))) {
+  if (!inherits(x, c("besd_fit", "besd_fit_by_country"))) {
+    .stopf("`%s` must be a besd_fit or besd_fit_by_country object.", nm)
+  }
+  invisible(x)
+}
+
+
+# Assert that `x` is a besd_fitted object (output of besd_fitted_probs()).
+.assert_besd_fitted <- function(x, nm = deparse(substitute(x))) {
+  if (!inherits(x, "besd_fitted")) {
+    .stopf(
+      "`%s` must be a besd_fitted object from `besd_fitted_probs()`.", nm
+    )
+  }
+  invisible(x)
+}
+
+
+# Assert that `x` is a besd_poststrat_frame object (output of besd_poststrat_frame()).
+.assert_besd_poststrat_frame <- function(x, nm = deparse(substitute(x))) {
+  if (!inherits(x, "besd_poststrat_frame")) {
+    .stopf(
+      "`%s` must be a besd_poststrat_frame object from `besd_poststrat_frame()`.", nm
+    )
+  }
+  invisible(x)
 }

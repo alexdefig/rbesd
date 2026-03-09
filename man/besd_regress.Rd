@@ -62,8 +62,7 @@ with the outcome or a predictor (MAR, MNAR) estimates may be biased.
 Use \code{\link[=besd_missing_summary]{besd_missing_summary()}} to inspect variable-level missingness before fitting.
 A warning is issued automatically when any predictor exceeds 5\% missing or when
 the listwise complete-case dataset exceeds 5\% missingness. If missingness is
-substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling
-\code{besd_regress()}.
+substantial consider imputing (e.g. with \pkg{mice}) before calling \code{besd_regress()}.
 
 For context predictors (e.g. ethnicity), \code{min_n_context} (default 10) silently
 recodes observations belonging to rare levels within a country to \code{NA} prior to

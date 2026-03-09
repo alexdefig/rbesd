@@ -18,8 +18,8 @@ Social Drivers (BeSD) quantitative toolkit data. It includes:
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/your-org/rbesd}
-  \item Report bugs at \url{https://github.com/your-org/rbesd/issues}
+  \item \url{https://github.com/alexdefig/rbesd}
+  \item Report bugs at \url{https://github.com/alexdefig/rbesd/issues}
 }
 
 }

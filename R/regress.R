@@ -24,8 +24,7 @@
 #' Use [besd_missing_summary()] to inspect variable-level missingness before fitting.
 #' A warning is issued automatically when any predictor exceeds 5% missing or when
 #' the listwise complete-case dataset exceeds 5% missingness. If missingness is
-#' substantial or patterned, consider imputing (e.g. with \pkg{mice}) before calling
-#' `besd_regress()`.
+#' substantial consider imputing (e.g. with \pkg{mice}) before calling `besd_regress()`.
 #'
 #' For context predictors (e.g. ethnicity), `min_n_context` (default 10) silently
 #' recodes observations belonging to rare levels within a country to `NA` prior to
@@ -94,10 +93,11 @@ besd_regress <- function(x,
     min_n_context = min_n_context
   )
   
-  dict     <- info$besd_dict
-  log_rows <- list()
-  fits_all <- list()
-  n        <- length(outcome)
+  dict        <- info$besd_dict
+  log_rows    <- list()
+  fits_all    <- list()
+  y_types_all <- list()
+  n           <- length(outcome)
   
   # Fit model for each outcome
   for (i in seq_along(outcome)) {
@@ -159,24 +159,46 @@ besd_regress <- function(x,
       error     = result$error %||% NA_character_
     )
     
-    if (!is.null(result$fit)) fits_all[[yy]] <- result$fit
+    if (!is.null(result$fit)) {
+      # Flatten the per-outcome besd_fit wrapper: extract raw models and y_type.
+      # For by_country the inner structure is fits[[country]][[sub_outcome]];
+      # for multilevel it is fits[[sub_outcome]]. Both are merged into fits_all
+      # so the returned object has no double nesting regardless of n outcomes.
+      if (scope == "by_country") {
+        for (cc in names(result$fit$fits)) {
+          if (is.null(fits_all[[cc]])) fits_all[[cc]] <- list()
+          for (nm in names(result$fit$fits[[cc]])) {
+            fits_all[[cc]][[nm]] <- result$fit$fits[[cc]][[nm]]
+            y_types_all[[nm]]    <- result$fit$meta$y_type
+          }
+        }
+      } else {
+        for (nm in names(result$fit$fits)) {
+          fits_all[[nm]]    <- result$fit$fits[[nm]]
+          y_types_all[[nm]] <- result$fit$meta$y_type
+        }
+      }
+    }
   }
-  
+
   log    <- dplyr::bind_rows(log_rows)
   n_fail <- sum(log$status == "failed")
   if (n_fail > 0L)
     message(sprintf("%d outcome(s) failed. Inspect $log for details.", n_fail))
-  
-  # Single outcome success: return the fit directly with log attached
-  if (length(outcome) == 1L && length(fits_all) == 1L) {
-    out     <- fits_all[[1L]]
-    out$log <- log
-    return(out)
-  }
-  
+
   structure(
-    list(fits = fits_all, log = log, prep = prep),
-    class = "besd_regress_multi"
+    list(
+      fits = fits_all,
+      prep = prep,
+      meta = list(
+        scope    = scope,
+        engine   = engine,
+        outcomes = names(y_types_all),
+        y_types  = y_types_all
+      ),
+      log  = log
+    ),
+    class = if (scope == "by_country") "besd_fit_by_country" else "besd_fit"
   )
 }
 
@@ -463,12 +485,219 @@ besd_regress <- function(x,
 
 # ── Print methods ────────────────────────────────────────────────────────────────
 
-# Print multi besd
 #' @export
-print.besd_regress_multi <- function(x, ...) {
-  n_ok   <- sum(x$log$status == "success")
-  n_fail <- sum(x$log$status == "failed")
-  cat(sprintf("<besd_regress_multi>  %d fitted, %d failed\n", n_ok, n_fail))
-  print(x$log)
+print.besd_fit <- function(x, ...) {
+  n_out  <- length(x$meta$outcomes %||% character())
+  n_ok   <- if (!is.null(x$log)) sum(x$log$status == "success") else n_out
+  n_fail <- if (!is.null(x$log)) sum(x$log$status == "failed")  else 0L
+  cat(sprintf(
+    "<besd_fit>  scope: %s | engine: %s | %d fitted, %d failed\n",
+    x$meta$scope %||% "?", x$meta$engine %||% "?", n_ok, n_fail
+  ))
+  if (!is.null(x$log)) print(x$log)
+  invisible(x)
+}
+
+
+# ── besd_fitted_probs() ──────────────────────────────────────────────────────────
+
+#' Extract fitted probabilities from a BeSD regression model
+#'
+#' Returns fitted (predicted) probabilities from a [besd_regress()] output.
+#' For Bayesian models, `n_sample` draws from the posterior distribution of
+#' predicted probabilities are returned, enabling full uncertainty propagation
+#' through downstream steps such as [besd_poststratify()]. For frequentist
+#' models, a single point-estimate prediction is returned.
+#'
+#' @param fit A `besd_fit` or `besd_fit_by_country` object from
+#'   [besd_regress()].
+#' @param newdata `NULL` to predict on the training data, or a
+#'   `besd_poststrat_frame` object from [besd_poststrat_frame()] to predict
+#'   on new data. Any other input will error with a clear message.
+#' @param n_sample Integer. Number of posterior draws for Bayesian models.
+#'   For large datasets, keep this small (e.g. 50) to limit memory use.
+#'   Ignored for frequentist models.
+#'
+#' @return A `besd_fitted` object containing:
+#' \describe{
+#'   \item{`draws`}{Named list, one element per outcome. Binary: matrix
+#'     `[n_sample x n_obs]` (Bayes) or `[1 x n_obs]` (frequentist). Ordinal:
+#'     3-D array `[n_sample x n_obs x n_categories]`.}
+#'   \item{`meta`}{Model metadata: `engine`, `scope`, `outcomes`, `y_type`,
+#'     `n_sample`, and `categories` (ordinal labels or `NULL` for binary).}
+#'   \item{`row_ids`}{Tibble with the country column and `.row_id` aligned to
+#'     the rows of `newdata` (or the training data if `newdata = NULL`).}
+#' }
+#'
+#' @seealso [besd_poststrat_frame()], [besd_poststratify()]
+#' @export
+besd_fitted_probs <- function(fit, newdata = NULL, n_sample = 50L) {
+
+  .assert_besd_fit(fit)
+
+  if (!is.null(newdata)) .assert_besd_poststrat_frame(newdata)
+
+  prep     <- fit$prep
+  engine   <- prep$engine
+  y_types  <- fit$meta$y_types  %||% list()
+  outcomes <- fit$meta$outcomes %||% character()
+  n_sample <- as.integer(n_sample)
+  encoded  <- newdata %||% prep$df
+
+  draws_list <- list()
+  cats_list  <- list()
+
+  if (inherits(fit, "besd_fit")) {
+    for (yy in outcomes) {
+      m <- fit$fits[[yy]]
+      if (is.null(m)) next
+      ytype            <- y_types[[yy]] %||% "binary"
+      result           <- .fitted_probs_one(m, encoded, engine, ytype, n_sample)
+      draws_list[[yy]] <- result$draws
+      cats_list[[yy]]  <- result$categories
+    }
+  } else {
+    result     <- .fitted_probs_by_country(fit, encoded, prep,
+                                            engine, y_types, outcomes, n_sample)
+    draws_list <- result$draws
+    cats_list  <- result$cats
+  }
+
+  country_col <- prep$country_col
+  row_ids     <- tibble::tibble(
+    .country = as.character(encoded[[country_col]]),
+    .row_id  = seq_len(nrow(encoded))
+  )
+  names(row_ids)[[1L]] <- country_col
+
+  structure(
+    list(
+      draws  = draws_list,
+      meta   = list(
+        engine     = engine,
+        scope      = prep$scope,
+        outcomes   = outcomes,
+        y_type     = (y_types[[outcomes[[1L]]]] %||% "binary"),  # first outcome; kept for besd_poststratify compat
+        y_types    = y_types,
+        n_sample   = n_sample,
+        categories = cats_list
+      ),
+      row_ids = row_ids
+    ),
+    class = "besd_fitted"
+  )
+}
+
+
+# Route predictions for besd_fit_by_country: each row in encoded is sent to the
+# model for its country. Results fill a matrix/array in newdata row order.
+# Rows with no matching country model receive NA.
+.fitted_probs_by_country <- function(fit, encoded, prep,
+                                     engine, y_types, outcomes, n_sample) {
+  country_col <- prep$country_col
+  countries   <- as.character(encoded[[country_col]])
+  n_obs       <- nrow(encoded)
+  n_draws     <- if (engine == "frequentist") 1L else n_sample
+
+  draws_out <- list()
+  cats_out  <- list()
+
+  for (yy in outcomes) {
+    y_type <- y_types[[yy]] %||% "binary"
+    mat    <- NULL  # initialised on first successful prediction
+    cats   <- NULL
+
+    for (cc in prep$countries) {
+      m   <- (fit$fits[[cc]] %||% list())[[yy]]
+      idx <- which(countries == cc)
+      if (is.null(m) || !length(idx)) next
+
+      result <- .fitted_probs_one(
+        m, encoded[idx, , drop = FALSE], engine, y_type, n_sample
+      )
+
+      if (is.null(mat)) {
+        cats <- result$categories
+        mat  <- if (y_type == "binary") {
+          matrix(NA_real_, nrow = n_draws, ncol = n_obs)
+        } else {
+          array(NA_real_, dim = c(n_draws, n_obs, dim(result$draws)[[3L]]))
+        }
+      }
+
+      if (y_type == "binary") mat[, idx]   <- result$draws
+      else                    mat[, idx, ] <- result$draws
+    }
+
+    if (is.null(mat)) next
+    draws_out[[yy]] <- mat
+    cats_out[[yy]]  <- cats
+  }
+
+  list(draws = draws_out, cats = cats_out)
+}
+
+
+# Extract fitted probabilities from a single model object.
+# Returns list(draws, categories) where draws is:
+#   binary:  matrix [n_draws x n_obs]
+#   ordinal: array  [n_draws x n_obs x n_k]
+.fitted_probs_one <- function(model, newdata, engine, y_type, n_sample) {
+
+  if (engine == "frequentist") {
+
+    if (y_type == "binary") {
+      preds <- stats::predict(model, newdata = newdata, type = "response",
+                              allow.new.levels = TRUE)
+      return(list(draws      = matrix(as.numeric(preds), nrow = 1L),
+                  categories = NULL))
+    }
+
+    # Ordinal (clm / clmm): predict() returns list with $fit [n_obs x n_k]
+    .require_pkg("ordinal", "for ordinal fitted probabilities")
+    pred_obj <- stats::predict(model, newdata = newdata, type = "prob")
+    mat      <- if (is.list(pred_obj)) pred_obj$fit else as.matrix(pred_obj)
+    cats     <- colnames(mat)
+    arr      <- array(as.numeric(mat),
+                      dim      = c(1L, nrow(mat), ncol(mat)),
+                      dimnames = list(NULL, NULL, cats))
+    return(list(draws = arr, categories = cats))
+  }
+
+  # Bayesian (brmsfit): posterior_epred() returns
+  #   binary:  [n_draws x n_obs]
+  #   ordinal: [n_draws x n_obs x n_k]
+  .require_pkg("brms", "for Bayesian fitted probabilities")
+  draws_arr <- brms::posterior_epred(
+    object           = model,
+    newdata          = newdata,
+    ndraws           = n_sample,
+    allow_new_levels = TRUE,
+    re_formula       = NULL
+  )
+
+  if (length(dim(draws_arr)) == 2L)
+    return(list(draws = draws_arr, categories = NULL))
+
+  list(draws = draws_arr, categories = dimnames(draws_arr)[[3L]])
+}
+
+
+#' @export
+print.besd_fitted <- function(x, ...) {
+  engine   <- x$meta$engine
+  y_type   <- x$meta$y_type
+  outcomes <- x$meta$outcomes
+  n_sample <- x$meta$n_sample
+  first    <- x$draws[[outcomes[[1L]]]]
+  n_obs    <- if (length(dim(first)) >= 2L) dim(first)[[2L]] else length(first)
+
+  cat(sprintf(
+    "<besd_fitted>  engine: %s | y_type: %s | outcomes: %d | obs: %d",
+    engine, y_type, length(outcomes), n_obs
+  ))
+  if (engine == "bayes") cat(sprintf(" | draws: %d", n_sample))
+  cat("\n")
+  if (length(outcomes)) cat("Outcomes:", paste(outcomes, collapse = ", "), "\n")
   invisible(x)
 }

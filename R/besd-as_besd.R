@@ -527,8 +527,8 @@ as_besd <- function(df,
 # Resolve the missing token vector for a single item, combining the `.all`
 # cross-item default with any item-specific tokens. Returns NULL if none 
 .besd_missing_tokens_for_item <- function(missing_tokens, item_id) {
-  if (is.null(missing_tokens))                                     return(NULL)
-  if (is.character(missing_tokens))                                return(missing_tokens)
+  if (is.null(missing_tokens)) return(NULL)
+  if (is.character(missing_tokens)) return(missing_tokens)
   if (!is.list(missing_tokens) || is.null(names(missing_tokens))) return(NULL)
   
   out <- NULL

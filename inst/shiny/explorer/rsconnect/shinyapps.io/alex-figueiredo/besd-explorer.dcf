@@ -1,0 +1,10 @@
+name: besd-explorer
+title: BeSD Explorer
+username: alex-figueiredo
+account: alex-figueiredo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16840431
+bundleId: 11679184
+url: https://alex-figueiredo.shinyapps.io/besd-explorer/
+version: 1

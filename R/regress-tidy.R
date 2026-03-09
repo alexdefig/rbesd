@@ -82,7 +82,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   prep          <- fit$prep
   is_by_country <- inherits(fit, "besd_fit_by_country")
   countries     <- if (is_by_country) prep$countries else ""
-  outcomes      <- prep$outcomes
+  outcomes      <- fit$meta$outcomes %||% prep$outcomes
   
   rows <- list()
   for (cc in countries %||% "") {
