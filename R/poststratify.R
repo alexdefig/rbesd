@@ -26,6 +26,13 @@
 #'   Default `FALSE`.
 #' @param overall_label String used to label the country column in national
 #'   output rows. Default `"Overall"`.
+#' @param post_probs Logical. If `TRUE`, the return value becomes a named list
+#'   with two elements: `estimates` (the usual `besd_poststrat` tibble) and
+#'   `post_probs` (a tibble with the same grouping columns, `outcome`, and
+#'   `category`, plus a `draws` list-column containing the full vector of
+#'   poststratified posterior draws for each row). The `post_probs` tibble
+#'   respects the same `by` and `overall` grouping as `estimates`. Default
+#'   `FALSE`.
 #'
 #' @section Sub-national use and context-predictor limitation:
 #' The supported use of poststratification in rbesd is **sub-national
@@ -35,18 +42,28 @@
 #' upstream model contains context-specific predictors; [besd_poststrat_frame()]
 #' will raise an error in that case. See its documentation for details.
 #'
-#' @return A `besd_poststrat` tibble with columns: grouping columns (country
-#'   and any `by` variables with human-readable labels), `outcome`, `estimate`,
-#'   `lower`, `upper`. For ordinal outcomes a `category` column is also
-#'   included. `lower` and `upper` are `NA` for frequentist models. When
-#'   `overall = TRUE`, national rows are appended with the country column set
-#'   to `overall_label`.
+#' @return When `post_probs = FALSE` (default): a `besd_poststrat` tibble with
+#'   columns: grouping columns (country and any `by` variables with
+#'   human-readable labels), `outcome`, `estimate`, `lower`, `upper`. For
+#'   ordinal outcomes a `category` column is also included. `lower` and `upper`
+#'   are `NA` for frequentist models. When `overall = TRUE`, national rows are
+#'   appended with the country column set to `overall_label`.
+#'
+#'   When `post_probs = TRUE`: a named list with:
+#'   \describe{
+#'     \item{`estimates`}{The `besd_poststrat` tibble described above.}
+#'     \item{`post_probs`}{A tibble with the same grouping columns, `outcome`,
+#'       and (for ordinal outcomes) `category`, plus a `draws` list-column.
+#'       Each element of `draws` is a numeric vector of length `n_draws`
+#'       containing the full distribution of poststratified posterior
+#'       probabilities for that group × outcome (× category).}
+#'   }
 #'
 #' @seealso [besd_poststrat_frame()], [besd_fitted_probs()]
 #' @export
 besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
                               conf_level = 0.95, overall = FALSE,
-                              overall_label = "Overall") {
+                              overall_label = "Overall", post_probs = FALSE) {
 
   .assert_besd_fitted(fitted)
   .assert_besd_poststrat_frame(poststrat_frame)
@@ -71,32 +88,44 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
   # Country-level pass: group by country + by
   groups <- .ps_group_indices(poststrat_frame, c(country_col, by))
-  rows   <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
-                           country_col, NULL, conf_level, engine, y_type)
+  result <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
+                           country_col, NULL, conf_level, engine, y_type,
+                           post_probs)
+  rows      <- result$rows
+  draw_rows <- result$draw_rows
 
   # National pass: group by by only (or single group if by is NULL)
   if (overall) {
     national_groups <- .ps_group_indices(poststrat_frame, by)
-    rows <- c(rows,
-              .ps_run_groups(national_groups, outcomes, fitted, pop, level_map,
-                             country_col, overall_label, conf_level, engine,
-                             y_type))
+    nat_result <- .ps_run_groups(national_groups, outcomes, fitted, pop,
+                                 level_map, country_col, overall_label,
+                                 conf_level, engine, y_type, post_probs)
+    rows      <- c(rows, nat_result$rows)
+    draw_rows <- c(draw_rows, nat_result$draw_rows)
   }
 
   if (!length(rows)) {
-    out <- tibble::tibble(
-      outcome  = character(),
-      category = character(),
-      estimate = numeric(),
-      lower    = numeric(),
-      upper    = numeric()
+    estimates <- structure(
+      tibble::tibble(outcome = character(), category = character(),
+                     estimate = numeric(), lower = numeric(), upper = numeric()),
+      class = c("besd_poststrat", "tbl_df", "tbl", "data.frame")
     )
-    return(structure(out, class = c("besd_poststrat", class(out))))
+    if (!post_probs) return(estimates)
+    return(list(estimates = estimates,
+                post_probs = tibble::tibble(outcome = character(),
+                                            category = character(),
+                                            draws = list())))
   }
 
-  out <- dplyr::bind_rows(rows)
-  if (y_type == "binary") out$category <- NULL
-  structure(out, class = c("besd_poststrat", class(out)))
+  estimates <- dplyr::bind_rows(rows)
+  if (y_type == "binary") estimates$category <- NULL
+  estimates <- structure(estimates, class = c("besd_poststrat", class(estimates)))
+
+  if (!post_probs) return(estimates)
+
+  pp <- dplyr::bind_rows(draw_rows)
+  if (y_type == "binary") pp$category <- NULL
+  list(estimates = estimates, post_probs = pp)
 }
 
 
@@ -126,13 +155,16 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
 
 # Run the poststratification weighting loop over a pre-computed set of groups.
-# Returns a list of row tibbles suitable for dplyr::bind_rows().
+# Returns list(rows, draw_rows):
+#   rows:      summary tibble rows for dplyr::bind_rows()
+#   draw_rows: posterior draw tibble rows (populated only when post_probs TRUE)
 # overall_label: if non-NULL, the country column is added to group_vals with
 #   this value (and placed first), marking rows as national-level estimates.
 .ps_run_groups <- function(groups, outcomes, fitted, pop, level_map,
                            country_col, overall_label, conf_level, engine,
-                           y_type) {
-  rows <- list()
+                           y_type, post_probs) {
+  rows      <- list()
+  draw_rows <- list()
 
   for (yy in outcomes) {
     draws_arr <- fitted$draws[[yy]]
@@ -158,6 +190,10 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
         rows[[length(rows) + 1L]] <- .ps_build_row(
           yy, group_vals, NA_character_, summ$estimate, summ$lower, summ$upper
         )
+        if (post_probs)
+          draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
+            yy, group_vals, NA_character_, ps_draws
+          )
       } else {
         for (k in seq_along(cats)) {
           slice    <- draws_arr[, idx, k, drop = FALSE]
@@ -167,12 +203,16 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
           rows[[length(rows) + 1L]] <- .ps_build_row(
             yy, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
           )
+          if (post_probs)
+            draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
+              yy, group_vals, cats[[k]], ps_draws
+            )
         }
       }
     }
   }
 
-  rows
+  list(rows = rows, draw_rows = draw_rows)
 }
 
 
@@ -213,8 +253,8 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 }
 
 
-# Build a single output row as a tibble, with group columns placed first
-# followed by outcome, category, and the three estimate columns.
+# Build a single summary output row as a tibble, with group columns placed
+# first followed by outcome, category, and the three estimate columns.
 .ps_build_row <- function(outcome, group_vals, category, estimate, lower, upper) {
   dplyr::bind_cols(
     group_vals,
@@ -224,6 +264,20 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
       estimate = as.numeric(estimate),
       lower    = as.numeric(lower),
       upper    = as.numeric(upper)
+    )
+  )
+}
+
+
+# Build a single posterior-draws output row as a tibble. Mirrors .ps_build_row
+# but stores the full ps_draws vector in a list-column instead of summarising.
+.ps_build_draw_row <- function(outcome, group_vals, category, ps_draws) {
+  dplyr::bind_cols(
+    group_vals,
+    tibble::tibble(
+      outcome  = outcome,
+      category = category,
+      draws    = list(as.numeric(ps_draws))
     )
   )
 }
