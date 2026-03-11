@@ -35,13 +35,14 @@ posterior distribution is propagated through the weighting step, yielding
 median estimates and credible intervals. For frequentist models, a single
 weighted point estimate is returned with no uncertainty quantification.
 }
-\section{Sub-national use}{
+\section{Sub-national use and context-predictor limitation}{
 
-The primary intended use of poststratification in rbesd is sub-national
-(admin1-level) analysis within a single country. In this setting, the
-"country" grouping column corresponds to the first administrative unit
-(e.g. region or state). Country-level poststratification across multiple
-countries is structurally supported but is not the primary design intent.
+The supported use of poststratification in rbesd is \strong{sub-national
+(admin1-level) analysis within a single country}, where the "country"
+grouping column corresponds to the first administrative unit (e.g. region
+or state). Multi-country poststratification is not supported when the
+upstream model contains context-specific predictors; \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}}
+will raise an error in that case. See its documentation for details.
 }
 
 \seealso{

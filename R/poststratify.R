@@ -19,23 +19,34 @@
 #'   be present in `poststrat_frame`.
 #' @param conf_level Numeric. Credible interval width for Bayesian models.
 #'   Default `0.95`. Ignored for frequentist models.
+#' @param overall Logical. If `TRUE`, an additional set of national-level
+#'   poststratified estimates is appended, pooling across all countries using
+#'   globally-normalised population weights. When `by` is also specified,
+#'   national estimates are returned separately for each `by` subgroup.
+#'   Default `FALSE`.
+#' @param overall_label String used to label the country column in national
+#'   output rows. Default `"Overall"`.
 #'
-#' @section Sub-national use:
-#' The primary intended use of poststratification in rbesd is sub-national
-#' (admin1-level) analysis within a single country. In this setting, the
-#' "country" grouping column corresponds to the first administrative unit
-#' (e.g. region or state). Country-level poststratification across multiple
-#' countries is structurally supported but is not the primary design intent.
+#' @section Sub-national use and context-predictor limitation:
+#' The supported use of poststratification in rbesd is **sub-national
+#' (admin1-level) analysis within a single country**, where the "country"
+#' grouping column corresponds to the first administrative unit (e.g. region
+#' or state). Multi-country poststratification is not supported when the
+#' upstream model contains context-specific predictors; [besd_poststrat_frame()]
+#' will raise an error in that case. See its documentation for details.
 #'
 #' @return A `besd_poststrat` tibble with columns: grouping columns (country
 #'   and any `by` variables with human-readable labels), `outcome`, `estimate`,
 #'   `lower`, `upper`. For ordinal outcomes a `category` column is also
-#'   included. `lower` and `upper` are `NA` for frequentist models.
+#'   included. `lower` and `upper` are `NA` for frequentist models. When
+#'   `overall = TRUE`, national rows are appended with the country column set
+#'   to `overall_label`.
 #'
 #' @seealso [besd_poststrat_frame()], [besd_fitted_probs()]
 #' @export
 besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
-                              conf_level = 0.95) {
+                              conf_level = 0.95, overall = FALSE,
+                              overall_label = "Overall") {
 
   .assert_besd_fitted(fitted)
   .assert_besd_poststrat_frame(poststrat_frame)
@@ -58,42 +69,18 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   y_type      <- fitted$meta$y_type
   outcomes    <- fitted$meta$outcomes
 
-  group_cols <- c(country_col, by)
-  groups     <- .ps_group_indices(poststrat_frame, group_cols)
+  # Country-level pass: group by country + by
+  groups <- .ps_group_indices(poststrat_frame, c(country_col, by))
+  rows   <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
+                           country_col, NULL, conf_level, engine, y_type)
 
-  rows <- list()
-
-  for (yy in outcomes) {
-    draws_arr <- fitted$draws[[yy]]
-    if (is.null(draws_arr)) next
-    cats <- fitted$meta$categories[[yy]]
-
-    for (grp in groups) {
-      idx <- grp$idx
-      w_c <- pop[idx]
-      if (!sum(w_c, na.rm = TRUE) > 0) next
-      w_c <- w_c / sum(w_c)  # normalise to sum to 1 within group
-
-      group_vals <- .ps_decode_groups(grp$values, level_map)
-
-      if (y_type == "binary") {
-        ps_draws <- .ps_weighted_draws(draws_arr[, idx, drop = FALSE], w_c)
-        summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
-        rows[[length(rows) + 1L]] <- .ps_build_row(
-          yy, group_vals, NA_character_, summ$estimate, summ$lower, summ$upper
-        )
-      } else {
-        for (k in seq_along(cats)) {
-          slice    <- draws_arr[, idx, k, drop = FALSE]
-          draws_k  <- matrix(as.numeric(slice), nrow = dim(draws_arr)[[1L]])
-          ps_draws <- .ps_weighted_draws(draws_k, w_c)
-          summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
-          rows[[length(rows) + 1L]] <- .ps_build_row(
-            yy, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
-          )
-        }
-      }
-    }
+  # National pass: group by by only (or single group if by is NULL)
+  if (overall) {
+    national_groups <- .ps_group_indices(poststrat_frame, by)
+    rows <- c(rows,
+              .ps_run_groups(national_groups, outcomes, fitted, pop, level_map,
+                             country_col, overall_label, conf_level, engine,
+                             y_type))
   }
 
   if (!length(rows)) {
@@ -119,7 +106,13 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 #   idx:    integer row indices belonging to this group
 #   values: single-row data frame of the group's column values
 # Groups are identified by pasting all group column values into a key string.
+# When group_cols is empty (e.g. national pass with no `by`), all rows are
+# returned as a single group with a 0-column values data frame.
 .ps_group_indices <- function(df, group_cols) {
+  if (!length(group_cols))
+    return(list(list(idx = seq_len(nrow(df)),
+                     values = df[1L, character(0), drop = FALSE])))
+
   group_df <- df[, group_cols, drop = FALSE]
   keys     <- do.call(
     paste,
@@ -129,6 +122,57 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
     idx <- which(keys == k)
     list(idx = idx, values = group_df[idx[[1L]], , drop = FALSE])
   })
+}
+
+
+# Run the poststratification weighting loop over a pre-computed set of groups.
+# Returns a list of row tibbles suitable for dplyr::bind_rows().
+# overall_label: if non-NULL, the country column is added to group_vals with
+#   this value (and placed first), marking rows as national-level estimates.
+.ps_run_groups <- function(groups, outcomes, fitted, pop, level_map,
+                           country_col, overall_label, conf_level, engine,
+                           y_type) {
+  rows <- list()
+
+  for (yy in outcomes) {
+    draws_arr <- fitted$draws[[yy]]
+    if (is.null(draws_arr)) next
+    cats <- fitted$meta$categories[[yy]]
+
+    for (grp in groups) {
+      idx <- grp$idx
+      w_c <- pop[idx]
+      if (!sum(w_c, na.rm = TRUE) > 0) next
+      w_c <- w_c / sum(w_c)  # normalise to sum to 1 within group
+
+      group_vals <- .ps_decode_groups(grp$values, level_map)
+      if (!is.null(overall_label)) {
+        group_vals[[country_col]] <- overall_label
+        group_vals <- group_vals[, c(country_col, setdiff(names(group_vals), country_col)),
+                                 drop = FALSE]
+      }
+
+      if (y_type == "binary") {
+        ps_draws <- .ps_weighted_draws(draws_arr[, idx, drop = FALSE], w_c)
+        summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+        rows[[length(rows) + 1L]] <- .ps_build_row(
+          yy, group_vals, NA_character_, summ$estimate, summ$lower, summ$upper
+        )
+      } else {
+        for (k in seq_along(cats)) {
+          slice    <- draws_arr[, idx, k, drop = FALSE]
+          draws_k  <- matrix(as.numeric(slice), nrow = dim(draws_arr)[[1L]])
+          ps_draws <- .ps_weighted_draws(draws_k, w_c)
+          summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+          rows[[length(rows) + 1L]] <- .ps_build_row(
+            yy, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
+          )
+        }
+      }
+    }
+  }
+
+  rows
 }
 
 

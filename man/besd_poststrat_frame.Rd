@@ -48,15 +48,22 @@ population structure. These are conceptually distinct and should not be
 confused.
 }
 
-\section{Sub-national use}{
+\section{Sub-national use and context-predictor limitation}{
 
-The primary intended use of poststratification in rbesd is sub-national
-(admin1-level) analysis within a single country. In this setting, the
-"country" grouping column in the model corresponds to the first
-administrative unit (e.g. region or state), not a nation. All package
-functionality works identically — only the interpretation differs.
-Country-level poststratification across multiple countries is structurally
-supported but is not the primary design intent.
+The supported use of poststratification in rbesd is \strong{sub-national
+(admin1-level) analysis within a single country}, where the "country"
+grouping column corresponds to the first administrative unit (e.g. region
+or state). In this setting all predictors are common across units, and the
+full MrP pipeline works correctly.
+
+Multi-country poststratification is \strong{not supported} when the fitted model
+contains context-specific predictors (variables whose levels differ across
+countries, expanded into per-country dummy columns by \code{\link[=besd_regress]{besd_regress()}}).
+Such models cannot be correctly poststratified from a census frame because
+the per-country dummy structure has no natural equivalent in population
+data. An error is raised if this configuration is detected. To use
+poststratification in a multi-country setting, refit the model treating the
+relevant variables as common predictors.
 }
 
 \seealso{

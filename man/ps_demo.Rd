@@ -5,13 +5,13 @@
 \alias{ps_demo}
 \title{Faux poststratification frame for the BeSD demo dataset}
 \format{
-A data frame with 5 columns:
+A data frame with 4 columns:
 \describe{
 \item{country}{Country (Brazil, Mexico, Senegal, Philippines, The UK).}
 \item{dem_gen}{Gender of the cell (matches levels in \link{data_demo}).}
 \item{dem_age}{Age group of the cell (matches levels in \link{data_demo}).}
-\item{dem_eth}{Ethnicity of the cell (matches levels in \link{data_demo}).}
-\item{n_pop}{Synthetic population cell count (observed count × 1000).}
+\item{n_pop}{Synthetic population cell count (observed count × random
+scalar in [800, 1200], seed 42).}
 }
 }
 \source{
@@ -24,8 +24,10 @@ ps_demo
 \description{
 A synthetic census-style data frame bundled with \strong{rbesd} for demonstrating
 the poststratification pipeline. It is derived from \link{data_demo} by counting
-the observed combinations of country × gender × age × ethnicity and scaling
-those counts by ×1000 to produce census-plausible population numbers.
+the observed combinations of country × gender × age, then scaling each cell
+count by a random integer in [800, 1200] to produce census-plausible
+population numbers that deliberately deviate from the raw survey proportions,
+so that MrP estimates differ visibly from unweighted survey estimates.
 }
 \details{
 Use this frame with \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}}, \code{\link[=besd_fitted_probs]{besd_fitted_probs()}}, and
@@ -34,9 +36,12 @@ Use this frame with \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}},
 \strong{Important:} these are synthetic population counts for illustration only.
 They should not be used for serious or representative analysis.
 
-Rows where any of \code{dem_gen}, \code{dem_age}, or \code{dem_eth} was \code{NA} in
-\link{data_demo} are excluded, reflecting the convention that a census frame
-contains only cells with fully-known demographic characteristics.
+Rows where \code{dem_gen} or \code{dem_age} was \code{NA} or a sparse category
+(\code{"Other"}, \code{"Prefer not to say"}) in \link{data_demo} are excluded, reflecting
+the convention that a census frame contains only well-defined demographic
+cells. Only common predictors are included; context-specific predictors
+(those with country-varying levels) are not supported in
+\code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}} and must not appear here.
 }
 \examples{
 data("ps_demo", package = "rbesd")

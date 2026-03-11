@@ -7,7 +7,8 @@
 #' [besd_poststratify()]. Each row must represent a unique covariate
 #' combination (cell) with an associated population count in `pop_col`.
 #' Predictor columns are encoded to match the internal representation used
-#' during model fitting, using the metadata stored in the `fit` object.
+#' during model fitting, using the metadata stored in the `fit` object returned
+#' from [besd_regress()].
 #'
 #' @param df A data frame or tibble. Each row should be a unique covariate
 #'   combination. The `pop_col` column contains the population count for
@@ -32,14 +33,21 @@
 #' population structure. These are conceptually distinct and should not be
 #' confused.
 #'
-#' @section Sub-national use:
-#' The primary intended use of poststratification in rbesd is sub-national
-#' (admin1-level) analysis within a single country. In this setting, the
-#' "country" grouping column in the model corresponds to the first
-#' administrative unit (e.g. region or state), not a nation. All package
-#' functionality works identically — only the interpretation differs.
-#' Country-level poststratification across multiple countries is structurally
-#' supported but is not the primary design intent.
+#' @section Sub-national use and context-predictor limitation:
+#' The supported use of poststratification in rbesd is **sub-national
+#' (admin1-level) analysis within a single country**, where the "country"
+#' grouping column corresponds to the first administrative unit (e.g. region
+#' or state). In this setting all predictors are common across units, and the
+#' full MrP pipeline works correctly.
+#'
+#' Multi-country poststratification is **not supported** when the fitted model
+#' contains context-specific predictors (variables whose levels differ across
+#' countries, expanded into per-country dummy columns by [besd_regress()]).
+#' Such models cannot be correctly poststratified from a census frame because
+#' the per-country dummy structure has no natural equivalent in population
+#' data. An error is raised if this configuration is detected. To use
+#' poststratification in a multi-country setting, refit the model treating the
+#' relevant variables as common predictors.
 #'
 #' @return A `besd_poststrat_frame` object: a validated, encoded tibble with a
 #'   `.row_id` column appended. The `pop_col`, `country_col`, and `level_map`
@@ -125,10 +133,25 @@ besd_poststrat_frame <- function(df, fit, mapping = NULL, pop_col) {
 
 # Encode factor predictor columns from human-readable labels to the opaque
 # codes (__01, __02, ...) used during model fitting, using prep$level_map.
-# Unknown levels are recoded to NA with a warning. Context dummy columns
-# (ctx_*) required by the model formula are added and set to 0 (reference
-# category) if absent — these are not typically available in census frames.
+# Unknown levels are recoded to NA with a warning.
+# Errors if the fitted model contains context-specific predictors (expanded
+# per-country dummies) — those cannot be correctly populated from a census
+# frame and indicate an unsupported multi-country MrP configuration.
 .ps_encode_predictors <- function(df, prep) {
+  if (length(prep$added_ctx) > 0L) {
+    ctx_vars <- unique(sub("^ctx_(.+)_[^_]+__[0-9]+$", "\\1", prep$added_ctx))
+    .stopf(
+      paste0(
+        "The fitted model contains context-specific predictor(s) (%s), which ",
+        "are expanded into per-country dummy columns that cannot be correctly ",
+        "populated from a census frame. Poststratification is only supported ",
+        "when all predictors are common (i.e. sub-national / single-country MrP). ",
+        "Refit the model with these variable(s) as common predictors."
+      ),
+      .pastec(ctx_vars)
+    )
+  }
+
   for (nm in prep$preds_common) {
     mp <- prep$level_map[[nm]]
     if (is.null(mp)) next  # numeric predictor — no encoding needed
@@ -154,10 +177,6 @@ besd_poststrat_frame <- function(df, fit, mapping = NULL, pop_col) {
     encoded  <- ifelse(v %in% bad | is.na(v), NA_character_, unname(code_of[v]))
     df[[nm]] <- factor(encoded, levels = mp$code)
   }
-
-  # Context dummy columns: not available in census frames, set to reference (0)
-  for (col in prep$added_ctx)
-    if (!col %in% names(df)) df[[col]] <- 0L
 
   df
 }
