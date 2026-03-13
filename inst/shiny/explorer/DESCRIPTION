@@ -7,4 +7,4 @@ Imports:
   rnaturalearth,
   sf
 Remotes:
-  alexdefig/rbesd@dev/shiny-explorer
+  alexdefig/rbesd
