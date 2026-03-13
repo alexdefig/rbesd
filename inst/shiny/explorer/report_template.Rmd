@@ -19,11 +19,7 @@ params:
   compare_countries: NULL
   comparison_item:   NULL
   include_profile:   TRUE
-  include_map:       FALSE
   include_demos:     FALSE
-  map_metric:        NULL
-  map_level:         NULL
-  map_top2:          FALSE
   breakdown_sum:     NULL
   bk_item:           NULL
   bk_dem_vars:       NULL
@@ -44,7 +40,6 @@ domain_filter     <- params$domain_filter
 compare_countries <- params$compare_countries
 comparison_item   <- params$comparison_item
 include_profile   <- isTRUE(params$include_profile)
-include_map       <- isTRUE(params$include_map)
 include_demos     <- isTRUE(params$include_demos)
 
 dd_cty <- besd_sum |> dplyr::filter(country == cty)
@@ -63,7 +58,7 @@ if (include_profile) {
 }
 ```
 
-```{r demo_table}
+```{r demo_table, results='asis'}
 if (include_profile) {
   if (!is.null(demo_sum) && nrow(demo_sum) > 0) {
     tbl <- demo_sum |>
@@ -77,7 +72,9 @@ if (include_profile) {
       ) |>
       dplyr::mutate(Variable = ifelse(duplicated(Variable), "", Variable))
     if (nrow(tbl) > 0) {
-      print(knitr::kable(tbl, align = c("l", "l", "r", "r")))
+      cat(knitr::kable(tbl, align = c("l", "l", "r", "r"),
+                       format = if (knitr::is_latex_output()) "latex" else "html",
+                       booktabs = TRUE), sep = "\n")
     } else {
       cat("No demographic data available for", cty)
     }
@@ -155,55 +152,6 @@ if (include_profile) {
 }
 ```
 
-```{r map_header, results='asis'}
-if (include_map) {
-  if (knitr::is_latex_output()) cat("\\newpage\n\n")
-  cat("\n\n---\n\n## Global Overview Map\n\n")
-}
-```
-
-```{r global_map, fig.width=12, fig.height=6}
-if (include_map && !is.null(params$map_metric)) {
-  # Compute scores (top-2-box or single level)
-  if (isTRUE(params$map_top2)) {
-    top2_levs  <- get_top2_levels(params$map_metric)
-    map_scores_df <- besd_sum |>
-      dplyr::filter(.data$item_id == params$map_metric,
-                    as.character(.data$response) %in% top2_levs) |>
-      dplyr::group_by(.data$country) |>
-      dplyr::summarise(mean_pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
-    map_subtitle <- paste0("Top 2 responses: ", params$map_metric)
-  } else {
-    map_scores_df <- besd_sum |>
-      dplyr::filter(.data$item_id == params$map_metric,
-                    as.character(.data$response) == params$map_level) |>
-      dplyr::select(country, mean_pct = pct)
-    map_subtitle <- paste0(params$map_level, ": ", params$map_metric)
-  }
-
-  map_sf_report <- world_sf |>
-    dplyr::left_join(
-      map_scores_df |> dplyr::left_join(iso_lookup, by = "country"),
-      by = c("iso3" = "iso3")
-    )
-
-  ggplot2::ggplot(map_sf_report) +
-    ggplot2::geom_sf(ggplot2::aes(fill = mean_pct), colour = "white", linewidth = 0.3) +
-    ggplot2::scale_fill_gradientn(
-      colours  = c("#CC278D", "#926F97", "#4F8D9A"),
-      na.value = "#e8eaed",
-      name     = "%",
-      limits   = c(0, 100)
-    ) +
-    ggplot2::labs(subtitle = map_subtitle) +
-    ggplot2::theme_void(base_family = "sans") +
-    ggplot2::theme(
-      legend.position  = "right",
-      plot.subtitle    = ggplot2::element_text(size = 10, colour = "#555555",
-                                               margin = ggplot2::margin(b = 6))
-    )
-}
-```
 
 ```{r demos_header, results='asis'}
 if (include_demos) {

@@ -67,6 +67,49 @@ ui <- bslib::page_navbar(
     title = shiny::span(shiny::icon("globe"), " Global Overview"),
     value = "Global Overview",
 
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = bslib::sidebar(
+        width = 250,
+        bg    = "#f4f4f4",
+        shiny::tags$div(class = "sidebar-label", "Country"),
+        shiny::selectInput(
+          "download_country", label = NULL,
+          choices  = countries,
+          selected = countries[1],
+          width    = "100%"
+        ),
+        shiny::tags$div(class = "sidebar-label mt-2", "Include in report"),
+        shiny::checkboxGroupInput(
+          "report_sections", label = NULL,
+          choices  = c("Country profile"        = "profile",
+                       "Demographic breakdowns" = "demographics"),
+          selected = "profile"
+        ),
+        shiny::tags$div(class = "sidebar-label mt-2", "Format"),
+        shiny::selectInput(
+          "report_format", label = NULL,
+          choices = c("HTML" = "html", "PDF" = "pdf"),
+          width   = "100%"
+        ),
+        shiny::downloadButton(
+          "download_report",
+          label = "Download Report",
+          class = "btn-sm btn-outline-primary w-100"
+        ),
+        shiny::hr(class = "my-2"),
+        shiny::tags$p(
+          class = "text-muted",
+          style = "font-size:0.78rem;",
+          shiny::icon("circle-info"),
+          " Visit the ",
+          shiny::tags$b("Country Profile"),
+          " and ",
+          shiny::tags$b("Demographics"),
+          " tabs to configure country comparisons and demographic options before downloading."
+        )
+      ),
+
     bslib::card(
       class = "border-0 shadow-sm",
       bslib::card_header(
@@ -133,6 +176,8 @@ ui <- bslib::page_navbar(
       ),
       plotly::plotlyOutput("ranked_plot", height = "420px")
     )
+
+    ) # end layout_sidebar
   ),
 
   # ── Tab 2: Country Profile ──────────────────────────────────────────────────
@@ -151,25 +196,6 @@ ui <- bslib::page_navbar(
           choices  = countries,
           selected = countries[1]
         ),
-        shiny::tags$div(class = "sidebar-label mt-2", "Report format"),
-        shiny::selectInput(
-          "report_format", label = NULL,
-          choices = c("HTML" = "html", "PDF" = "pdf"),
-          width = "100%"
-        ),
-        shiny::tags$div(class = "sidebar-label mt-2", "Include in report"),
-        shiny::checkboxGroupInput(
-          "report_sections", label = NULL,
-          choices  = c("Country profile"        = "profile",
-                       "Global overview map"    = "map",
-                       "Demographic breakdowns" = "demographics"),
-          selected = "profile"
-        ),
-        shiny::downloadButton(
-          "download_report",
-          label = "Download Report",
-          class = "btn-sm btn-outline-primary w-100"
-        )
       ),
 
       # ── Sample composition (full width, top) ────────────────────────────────
@@ -258,7 +284,7 @@ ui <- bslib::page_navbar(
             class = "small text-muted",
             style = "font-weight: normal;",
             shiny::icon("circle-info"),
-            " Values shown are the top-two-box % for ordinal items (sum of the two most favourable responses) and the top-box % for binary items."
+            " Each spoke shows the % of caregivers giving a positive response: for scale items both most-favourable categories are summed; for yes/no items the most favourable category is shown."
           )
         ),
 
@@ -326,7 +352,7 @@ ui <- bslib::page_navbar(
             label    = NULL,
             choices  = setNames(names(breakdown_var_meta),
                                 unname(breakdown_var_meta)),
-            selected = names(breakdown_var_meta)[1]
+            selected = names(breakdown_var_meta)
           )
         ),
 
@@ -378,9 +404,9 @@ server <- function(input, output, session) {
 
   output$world_map <- leaflet::renderLeaflet({
     layers <- make_map_layers(.initial_item_id, initial_level_selected)
-    base <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
+    base <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 1)) |>
       leaflet::addProviderTiles(leaflet::providers$CartoDB.VoyagerNoLabels) |>
-      leaflet::setView(lng = 20, lat = 15, zoom = 2) |>
+      leaflet::setView(lng = 20, lat = 10, zoom = 2) |>
       leaflet::setMaxBounds(lng1 = -180, lat1 = -90, lng2 = 180, lat2 = 90)
     apply_map_layers(base, layers)
   })
@@ -604,13 +630,10 @@ server <- function(input, output, session) {
                           integer(1L))
     cum_ends    <- cumsum(dom_counts)   # 1-indexed end-of-domain positions
 
-    # Separator angle = midpoint between last item of domain k and first of k+1
-    # Item i (1-indexed) sits at (i-1)*step degrees
-    sep_angles <- if (length(cum_ends) > 1L) {
-      (cum_ends[-length(cum_ends)] - 1L) * step + step / 2
-    } else {
-      numeric(0L)
-    }
+    # One separator per domain boundary (including wrap-around after last domain).
+    # Item i (1-indexed) sits at (i-1)*step degrees; midpoint between item[k]
+    # and item[k+1] is at (k - 0.5)*step.
+    sep_angles <- (cum_ends - 1L) * step + step / 2
 
     # Domain label position = midpoint of each domain's angular arc
     dom_starts  <- c(1L, cum_ends[-length(cum_ends)] + 1L)
@@ -620,6 +643,7 @@ server <- function(input, output, session) {
       "social processes"     = "Social\nProcesses",
       "practical issues"     = "Practical\nIssues"
     )
+
 
     # ── Build traces ─────────────────────────────────────────────────────────
     line_colors <- c("#008e9c", "#ed2290", "#f39c12", "#9b59b6",
@@ -657,7 +681,9 @@ server <- function(input, output, session) {
       )
     }
 
-    # Domain separator spokes: thick radial lines between domain groups
+    # Domain separator spokes: thick radial lines, one per domain boundary
+    # (including the wrap-around between last and first domain).
+    # range = c(0, 100) so r=100 lands exactly on the outer circle.
     for (ang in sep_angles) {
       fig <- fig |> plotly::add_trace(
         type       = "scatterpolar",
@@ -671,16 +697,17 @@ server <- function(input, output, session) {
       )
     }
 
-    # Domain arc labels (placed just outside r = 100)
+    # Domain labels inside the circle as text traces so they rotate with the
+    # chart when the user interacts with it.  Placed at r = 78 (inner arc).
     for (k in seq_along(dom_present)) {
       fig <- fig |> plotly::add_trace(
         type       = "scatterpolar",
-        r          = 114,
+        r          = 78,
         theta      = dom_centres[k],
         thetaunit  = "degrees",
         mode       = "text",
-        text       = dom_short[dom_present[k]],
-        textfont   = list(size = 9L, color = "#666666",
+        text       = paste0("<b>", dom_short[dom_present[k]], "</b>"),
+        textfont   = list(size = 12L, color = "#333333",
                           family = "Poppins, sans-serif"),
         showlegend = FALSE,
         hoverinfo  = "none"
@@ -691,8 +718,7 @@ server <- function(input, output, session) {
       polar = list(
         radialaxis = list(
           visible    = TRUE,
-          range      = c(0, 122),          # extended to show domain labels
-          tickvals   = c(0, 25, 50, 75, 100),
+          range      = c(0, 100),
           ticksuffix = "%",
           tickfont   = list(size = 9, family = "Poppins, sans-serif"),
           gridcolor  = "#e9ecef"
@@ -812,14 +838,24 @@ server <- function(input, output, session) {
 
   # ── Download Report ────────────────────────────────────────────────────────
 
+  # Keep the Global Overview country selector in sync with the profile selector
+  shiny::observeEvent(input$profile_country, {
+    shiny::updateSelectInput(session, "download_country", selected = input$profile_country)
+  })
+  shiny::observeEvent(input$download_country, {
+    shiny::updateSelectInput(session, "profile_country", selected = input$download_country)
+    shiny::updateSelectInput(session, "bk_country",      selected = input$download_country)
+    selected_country(input$download_country)
+  })
+
   output$download_report <- shiny::downloadHandler(
     filename = function() {
       ext <- if (isTRUE(input$report_format == "pdf")) ".pdf" else ".html"
-      paste0("BeSD_Report_", gsub(" ", "_", selected_country()), "_",
+      paste0("BeSD_Report_", gsub(" ", "_", input$download_country), "_",
              format(Sys.Date(), "%Y%m%d"), ext)
     },
     content = function(file) {
-      cty <- selected_country()
+      cty <- input$download_country
       fmt <- if (isTRUE(input$report_format == "pdf")) "pdf_document" else "html_document"
 
       rmd_template <- file.path(getwd(), "report_template.Rmd")
@@ -837,11 +873,7 @@ server <- function(input, output, session) {
         compare_countries = input$compare_country[input$compare_country %in% countries],
         comparison_item   = input$comparison_item,
         include_profile   = "profile"      %in% input$report_sections,
-        include_map       = "map"          %in% input$report_sections,
         include_demos     = "demographics" %in% input$report_sections,
-        map_metric        = input$map_metric,
-        map_level         = input$map_level,
-        map_top2          = isTRUE(input$top2box),
         breakdown_sum     = if ("demographics" %in% input$report_sections) breakdown_sum else NULL,
         bk_item           = input$bk_item,
         bk_dem_vars       = input$bk_dem_vars
