@@ -174,7 +174,8 @@ ui <- bslib::page_navbar(
           shiny::textOutput("map_question", inline = TRUE)
         )
       ),
-      plotly::plotlyOutput("ranked_plot", height = "420px")
+      plotly::plotlyOutput("ranked_plot", height = "420px"),
+      shiny::uiOutput("ranked_ci_note")
     )
 
     ) # end layout_sidebar
@@ -894,10 +895,29 @@ server <- function(input, output, session) {
 
   # Dynamic x-axis label for ranked plot — mirrors the map level dropdown
   ranked_xlab <- shiny::reactive({
-    if (isTRUE(input$top2box) && is_ordinal()) return("Top 2 responses (%)")
+    if (isTRUE(input$top2box) && is_ordinal()) {
+      top2_levs <- get_top2_levels(input$map_metric)
+      return(paste0(top2_levs[1], " + ", top2_levs[2], " (%)"))
+    }
     lev <- input$map_level
     if (is.null(lev) || !nzchar(lev)) return("Response (%)")
     paste0(lev, " (%)")
+  })
+
+  output$ranked_ci_note <- shiny::renderUI({
+    if (!isTRUE(input$top2box) || !is_ordinal()) return(NULL)
+    top2_levs <- get_top2_levels(input$map_metric)
+    shiny::div(
+      class = "text-muted px-3 pb-2",
+      style = "font-size: 0.8rem;",
+      shiny::icon("circle-info", class = "me-1"),
+      paste0(
+        'Bars show the combined percentage of \u201c', top2_levs[1],
+        '\u201d and \u201c', top2_levs[2],
+        '\u201d responses. Credible intervals are derived by error propagation ',
+        '(combining the standard errors of each response category) and are capped at 0\u2013100%.'
+      )
+    )
   })
 
   map_question_text <- shiny::reactive({
@@ -948,8 +968,8 @@ server <- function(input, output, session) {
             .groups = "drop"
           ) |>
           dplyr::mutate(
-            lcl = .data$pct - 1.96 * .data$se,
-            ucl = .data$pct + 1.96 * .data$se
+            lcl = pmax(0,   .data$pct - 1.96 * .data$se),
+            ucl = pmin(100, .data$pct + 1.96 * .data$se)
           ) |>
           dplyr::select(-"se")
       } else {
