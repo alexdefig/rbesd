@@ -41,10 +41,48 @@ world_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") |>
 
 # ── 5. Map helpers ────────────────────────────────────────────────────────────
 
+# Return the 2 most-positive response labels for an ordinal item.
+# Anchors on topbox_label so the result is correct regardless of whether
+# item_responses() orders negative→positive or positive→negative.
+get_top2_levels <- function(metric) {
+  all_levs <- item_responses(metric)
+  n        <- length(all_levs)
+  if (n <= 1L) return(all_levs)
+
+  tb_raw <- topbox_all |>
+    dplyr::filter(.data$item_id == metric) |>
+    dplyr::pull(.data$topbox_label) |>
+    unique()
+  if (length(tb_raw) == 0L || is.na(tb_raw[1L])) return(tail(all_levs, 2L))
+
+  tb_label <- trimws(strsplit(as.character(tb_raw[1L]), ",")[[1L]])[1L]
+  pos      <- which(all_levs == tb_label)
+  if (length(pos) == 0L) return(tail(all_levs, 2L))
+
+  if (pos == 1L) {
+    all_levs[1L:2L]          # topbox is first → descending order; second is index 2
+  } else if (pos == n) {
+    all_levs[(n - 1L):n]     # topbox is last  → ascending order; second is index n-1
+  } else {
+    all_levs[c(pos, pos + 1L)]  # fallback: topbox + next
+  }
+}
+
+# Compute per-country combined % for the top 2 ordinal response levels.
+map_scores_top2 <- function(metric) {
+  top2_levs <- get_top2_levels(metric)
+  besd_sum |>
+    dplyr::filter(.data$item_id == !!metric,
+                  as.character(.data$response) %in% top2_levs) |>
+    dplyr::group_by(.data$country) |>
+    dplyr::summarise(mean_pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
+}
+
 # Build the palette, joined sf, and legend params for a given metric + level.
 # Returns a list used by both the initial renderLeaflet and leafletProxy updates.
-make_map_layers <- function(metric, level) {
-  scores     <- map_scores(metric, level)
+make_map_layers <- function(metric, level, top2 = FALSE) {
+  scores      <- if (isTRUE(top2)) map_scores_top2(metric) else map_scores(metric, level)
+  legend_label <- if (isTRUE(top2)) "Top 2 responses" else level
   vals       <- scores$mean_pct[!is.na(scores$mean_pct)]
   data_range <- if (length(vals) >= 2) range(vals) else c(0, 100)
   span       <- max(data_range[2] - data_range[1], 5)
@@ -69,7 +107,7 @@ make_map_layers <- function(metric, level) {
   )
 
   list(map_sf = map_sf, pal = pal, pal_legend = pal_legend,
-       pal_domain = pal_domain, level = level)
+       pal_domain = pal_domain, level = legend_label)
 }
 
 # Apply polygon + legend layers to a leaflet map or proxy.

@@ -4,7 +4,15 @@
 \alias{besd_poststratify}
 \title{Poststratify BeSD fitted probabilities to a target population}
 \usage{
-besd_poststratify(fitted, poststrat_frame, by = NULL, conf_level = 0.95)
+besd_poststratify(
+  fitted,
+  poststrat_frame,
+  by = NULL,
+  conf_level = 0.95,
+  overall = FALSE,
+  overall_label = "Overall",
+  post_probs = FALSE
+)
 }
 \arguments{
 \item{fitted}{A \code{besd_fitted} object from \code{\link[=besd_fitted_probs]{besd_fitted_probs()}}.}
@@ -20,12 +28,41 @@ be present in \code{poststrat_frame}.}
 
 \item{conf_level}{Numeric. Credible interval width for Bayesian models.
 Default \code{0.95}. Ignored for frequentist models.}
+
+\item{overall}{Logical. If \code{TRUE}, an additional set of national-level
+poststratified estimates is appended, pooling across all countries using
+globally-normalised population weights. When \code{by} is also specified,
+national estimates are returned separately for each \code{by} subgroup.
+Default \code{FALSE}.}
+
+\item{overall_label}{String used to label the country column in national
+output rows. Default \code{"Overall"}.}
+
+\item{post_probs}{Logical. If \code{TRUE}, the return value becomes a named list
+with two elements: \code{estimates} (the usual \code{besd_poststrat} tibble) and
+\code{post_probs} (a tibble with the same grouping columns, \code{outcome}, and
+\code{category}, plus a \code{draws} list-column containing the full vector of
+poststratified posterior draws for each row). The \code{post_probs} tibble
+respects the same \code{by} and \code{overall} grouping as \code{estimates}. Default
+\code{FALSE}.}
 }
 \value{
-A \code{besd_poststrat} tibble with columns: grouping columns (country
-and any \code{by} variables with human-readable labels), \code{outcome}, \code{estimate},
-\code{lower}, \code{upper}. For ordinal outcomes a \code{category} column is also
-included. \code{lower} and \code{upper} are \code{NA} for frequentist models.
+When \code{post_probs = FALSE} (default): a \code{besd_poststrat} tibble with
+columns: grouping columns (country and any \code{by} variables with
+human-readable labels), \code{outcome}, \code{estimate}, \code{lower}, \code{upper}. For
+ordinal outcomes a \code{category} column is also included. \code{lower} and \code{upper}
+are \code{NA} for frequentist models. When \code{overall = TRUE}, national rows are
+appended with the country column set to \code{overall_label}.
+
+When \code{post_probs = TRUE}: a named list with:
+\describe{
+\item{\code{estimates}}{The \code{besd_poststrat} tibble described above.}
+\item{\code{post_probs}}{A tibble with the same grouping columns, \code{outcome},
+and (for ordinal outcomes) \code{category}, plus a \code{draws} list-column.
+Each element of \code{draws} is a numeric vector of length \code{n_draws}
+containing the full distribution of poststratified posterior
+probabilities for that group × outcome (× category).}
+}
 }
 \description{
 Applies population counts from a \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}} to fitted

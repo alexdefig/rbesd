@@ -96,6 +96,11 @@ ui <- bslib::page_navbar(
           )
         ),
         shiny::div(
+          id    = "top2box_div",
+          style = "display:none;",
+          shiny::checkboxInput("top2box", "Combine top two responses", value = FALSE)
+        ),
+        shiny::div(
           class = "text-muted small",
           shiny::icon("circle-info"), " Click a country to view its profile"
         ),
@@ -151,6 +156,14 @@ ui <- bslib::page_navbar(
           "report_format", label = NULL,
           choices = c("HTML" = "html", "PDF" = "pdf"),
           width = "100%"
+        ),
+        shiny::tags$div(class = "sidebar-label mt-2", "Include in report"),
+        shiny::checkboxGroupInput(
+          "report_sections", label = NULL,
+          choices  = c("Country profile"        = "profile",
+                       "Global overview map"    = "map",
+                       "Demographic breakdowns" = "demographics"),
+          selected = "profile"
         ),
         shiny::downloadButton(
           "download_report",
@@ -245,7 +258,7 @@ ui <- bslib::page_navbar(
             class = "small text-muted",
             style = "font-weight: normal;",
             shiny::icon("circle-info"),
-            " Values shown are the percentage selecting the highest response category for each item."
+            " Values shown are the top-two-box % for ordinal items (sum of the two most favourable responses) and the top-box % for binary items."
           )
         ),
 
@@ -357,6 +370,12 @@ server <- function(input, output, session) {
 
   # ── World Map ──────────────────────────────────────────────────────────────
 
+  # TRUE when the selected map metric is an ordinal item type
+  is_ordinal <- shiny::reactive({
+    any(besd_sum$item_id == input$map_metric &
+          besd_sum$item_type == "ordinal", na.rm = TRUE)
+  })
+
   output$world_map <- leaflet::renderLeaflet({
     layers <- make_map_layers(.initial_item_id, initial_level_selected)
     base <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
@@ -377,12 +396,28 @@ server <- function(input, output, session) {
     top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])[1]
     sel <- if (length(top_resp) > 0 && !is.na(top_resp) && top_resp %in% levs) top_resp else levs[1]
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
+    # Show/hide the top-2-box checkbox depending on item type
+    shinyjs::toggle(id = "top2box_div", condition = is_ordinal())
+    if (!is_ordinal()) shiny::updateCheckboxInput(session, "top2box", value = FALSE)
+    shinyjs::toggleState(id = "map_level", condition = !isTRUE(input$top2box))
   })
 
   # When level changes: redraw map (ignoreInit avoids double-render on startup)
   shiny::observeEvent(input$map_level, {
     shiny::req(nzchar(input$map_level))
-    layers <- make_map_layers(input$map_metric, input$map_level)
+    layers <- make_map_layers(input$map_metric, input$map_level,
+                              top2 = isTRUE(input$top2box))
+    proxy  <- leaflet::leafletProxy("world_map") |>
+      leaflet::clearShapes() |>
+      leaflet::clearControls()
+    apply_map_layers(proxy, layers)
+  }, ignoreInit = TRUE)
+
+  # When top-2-box toggle changes: disable/enable level dropdown and redraw map
+  shiny::observeEvent(input$top2box, {
+    shinyjs::toggleState(id = "map_level", condition = !isTRUE(input$top2box))
+    layers <- make_map_layers(input$map_metric, input$map_level,
+                              top2 = isTRUE(input$top2box))
     proxy  <- leaflet::leafletProxy("world_map") |>
       leaflet::clearShapes() |>
       leaflet::clearControls()
@@ -503,24 +538,90 @@ server <- function(input, output, session) {
     comp_valid <- input$compare_country[input$compare_country %in% countries]
     ctys       <- c(cty, comp_valid)
 
+    dom_levels <- c("thinking and feeling", "social processes", "practical issues")
+
+    # Order items by explicit domain sequence, then item_id within domain
     item_info <- topbox_all |>
       dplyr::filter(.data$country == cty) |>
-      dplyr::distinct(.data$item_id, .data$domain,
-                      .data$question_short, .data$item_id) |>
-      dplyr::arrange(.data$domain, .data$item_id)
+      dplyr::distinct(.data$item_id, .data$domain, .data$question_short) |>
+      dplyr::mutate(
+        domain_f = factor(.data$domain, levels = dom_levels)
+      ) |>
+      dplyr::arrange(.data$domain_f, .data$item_id)
 
     if (nrow(item_info) == 0) {
-      return(plotly::plot_ly() |>
-               plotly::layout(title = "No data available"))
+      return(plotly::plot_ly() |> plotly::layout(title = "No data available"))
     }
 
-    theta_raw <- sapply(
-      dplyr::coalesce(item_info$question_short, item_info$item_id),
-      function(x) paste(strwrap(x, width = 15), collapse = "\n"),
-      USE.NAMES = FALSE
-    )
-    theta_closed <- c(theta_raw, theta_raw[1])
+    n_items   <- nrow(item_info)
+    step      <- 360 / n_items
+    theta_deg <- (seq_len(n_items) - 1L) * step   # one angle per item, in degrees
 
+    # Angular axis tick labels
+    tick_text <- vapply(
+      dplyr::coalesce(item_info$question_short, item_info$item_id),
+      function(x) paste(strwrap(x, width = 15L), collapse = "\n"),
+      character(1L)
+    )
+
+    # ── Score computation: top-2-box for ordinal, topbox for binary ───────────
+    ordinal_ids <- unique(besd_sum$item_id[besd_sum$item_type == "ordinal"])
+    radar_items     <- item_info$item_id
+    ordinal_radar   <- radar_items[radar_items %in% ordinal_ids]
+    nonordinal_radar <- radar_items[!radar_items %in% ordinal_ids]
+
+    if (length(ordinal_radar) > 0L) {
+      t2_list <- lapply(ordinal_radar, function(iid) {
+        top2_levs <- get_top2_levels(iid)
+        besd_sum |>
+          dplyr::filter(
+            .data$country %in% ctys,
+            .data$item_id == iid,
+            as.character(.data$response) %in% top2_levs
+          ) |>
+          dplyr::group_by(.data$country, .data$item_id) |>
+          dplyr::summarise(pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
+      })
+      t2_scores <- dplyr::bind_rows(t2_list)
+    } else {
+      t2_scores <- data.frame(country  = character(),
+                              item_id  = character(),
+                              pct      = numeric(),
+                              stringsAsFactors = FALSE)
+    }
+
+    tb_scores <- topbox_all |>
+      dplyr::filter(.data$country %in% ctys,
+                    .data$item_id %in% nonordinal_radar) |>
+      dplyr::select("country", "item_id", "pct")
+
+    all_scores <- dplyr::bind_rows(t2_scores, tb_scores)
+
+    # ── Domain separator geometry ─────────────────────────────────────────────
+    dom_present <- dom_levels[dom_levels %in% item_info$domain]
+    dom_counts  <- vapply(dom_present,
+                          function(d) sum(item_info$domain == d, na.rm = TRUE),
+                          integer(1L))
+    cum_ends    <- cumsum(dom_counts)   # 1-indexed end-of-domain positions
+
+    # Separator angle = midpoint between last item of domain k and first of k+1
+    # Item i (1-indexed) sits at (i-1)*step degrees
+    sep_angles <- if (length(cum_ends) > 1L) {
+      (cum_ends[-length(cum_ends)] - 1L) * step + step / 2
+    } else {
+      numeric(0L)
+    }
+
+    # Domain label position = midpoint of each domain's angular arc
+    dom_starts  <- c(1L, cum_ends[-length(cum_ends)] + 1L)
+    dom_centres <- ((dom_starts - 1L) * step + (cum_ends - 1L) * step) / 2
+    dom_short   <- c(
+      "thinking and feeling" = "Thinking &\nFeeling",
+      "social processes"     = "Social\nProcesses",
+      "practical issues"     = "Practical\nIssues"
+    )
+
+    # ── Build traces ─────────────────────────────────────────────────────────
     line_colors <- c("#008e9c", "#ed2290", "#f39c12", "#9b59b6",
                      "#27ae60", "#e74c3c", "#2980b9", "#d35400")
     fill_colors <- c("rgba(0,142,156,0.15)",  "rgba(237,34,144,0.15)",
@@ -528,54 +629,92 @@ server <- function(input, output, session) {
                      "rgba(39,174,96,0.15)",  "rgba(231,76,60,0.15)",
                      "rgba(41,128,185,0.15)", "rgba(211,84,0,0.15)")
 
-    fig <- plotly::plot_ly(type = "scatterpolar", mode = "lines+markers")
+    fig <- plotly::plot_ly()
 
+    # Country data traces
     for (k in seq_along(ctys)) {
       c_name  <- ctys[k]
       col_idx <- ((k - 1L) %% length(line_colors)) + 1L
-      tb_c <- topbox_all |>
-        dplyr::filter(.data$country == c_name,
-                      .data$item_id %in% item_info$item_id) |>
-        dplyr::slice(match(item_info$item_id, .data$item_id))
 
-      r_vals <- c(tb_c$pct, tb_c$pct[1])
+      r_vals <- vapply(radar_items, function(iid) {
+        v <- all_scores$pct[all_scores$country == c_name &
+                              all_scores$item_id == iid]
+        if (length(v) == 0L || all(is.na(v))) NA_real_ else v[[1L]]
+      }, numeric(1L))
 
       fig <- fig |> plotly::add_trace(
-        r             = r_vals,
-        theta         = theta_closed,
+        type          = "scatterpolar",
+        r             = c(r_vals, r_vals[1L]),
+        theta         = c(theta_deg, theta_deg[1L]),
+        thetaunit     = "degrees",
+        mode          = "lines+markers",
         name          = c_name,
         fill          = "toself",
         fillcolor     = fill_colors[col_idx],
         line          = list(color = line_colors[col_idx], width = 2.5),
         marker        = list(color = line_colors[col_idx], size = 5),
-        hovertemplate = paste0(
-          "<b>", c_name, "</b> — %{theta}: %{r:.1f}%<extra></extra>"
-        )
+        hovertemplate = paste0("<b>", c_name, "</b>: %{r:.1f}%<extra></extra>")
+      )
+    }
+
+    # Domain separator spokes: thick radial lines between domain groups
+    for (ang in sep_angles) {
+      fig <- fig |> plotly::add_trace(
+        type       = "scatterpolar",
+        r          = c(0, 100),
+        theta      = c(ang, ang),
+        thetaunit  = "degrees",
+        mode       = "lines",
+        line       = list(color = "#444444", width = 2.5),
+        showlegend = FALSE,
+        hoverinfo  = "none"
+      )
+    }
+
+    # Domain arc labels (placed just outside r = 100)
+    for (k in seq_along(dom_present)) {
+      fig <- fig |> plotly::add_trace(
+        type       = "scatterpolar",
+        r          = 114,
+        theta      = dom_centres[k],
+        thetaunit  = "degrees",
+        mode       = "text",
+        text       = dom_short[dom_present[k]],
+        textfont   = list(size = 9L, color = "#666666",
+                          family = "Poppins, sans-serif"),
+        showlegend = FALSE,
+        hoverinfo  = "none"
       )
     }
 
     fig |> plotly::layout(
       polar = list(
-        radialaxis  = list(
-          visible   = TRUE,
-          range     = c(0, 100),
+        radialaxis = list(
+          visible    = TRUE,
+          range      = c(0, 122),          # extended to show domain labels
+          tickvals   = c(0, 25, 50, 75, 100),
           ticksuffix = "%",
-          tickfont  = list(size = 9, family = "Poppins, sans-serif"),
-          gridcolor = "#e9ecef"
+          tickfont   = list(size = 9, family = "Poppins, sans-serif"),
+          gridcolor  = "#e9ecef"
         ),
         angularaxis = list(
-          tickfont = list(size = 9, family = "Poppins, sans-serif")
+          tickvals  = theta_deg,
+          ticktext  = tick_text,
+          tickfont  = list(size = 9, family = "Poppins, sans-serif"),
+          direction = "clockwise",
+          rotation  = 90,
+          gridcolor = "#e9ecef"
         ),
         bgcolor = "white"
       ),
-      showlegend   = length(ctys) > 1,
-      legend       = list(
-        orientation    = "h",
-        x              = 0,
-        xanchor        = "left",
-        y              = -0.05
+      showlegend = length(ctys) > 1L,
+      legend = list(
+        orientation = "h",
+        x           = 0,
+        xanchor     = "left",
+        y           = -0.05
       ),
-      font         = list(family = "Poppins, sans-serif"),
+      font          = list(family = "Poppins, sans-serif"),
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
       margin        = list(l = 60, r = 60, t = 30, b = 30)
@@ -696,7 +835,16 @@ server <- function(input, output, session) {
         demo_sum          = demo_sum,
         domain_filter     = input$domain_filter,
         compare_countries = input$compare_country[input$compare_country %in% countries],
-        comparison_item   = input$comparison_item
+        comparison_item   = input$comparison_item,
+        include_profile   = "profile"      %in% input$report_sections,
+        include_map       = "map"          %in% input$report_sections,
+        include_demos     = "demographics" %in% input$report_sections,
+        map_metric        = input$map_metric,
+        map_level         = input$map_level,
+        map_top2          = isTRUE(input$top2box),
+        breakdown_sum     = if ("demographics" %in% input$report_sections) breakdown_sum else NULL,
+        bk_item           = input$bk_item,
+        bk_dem_vars       = input$bk_dem_vars
       )
 
       rmarkdown::render(
@@ -714,6 +862,7 @@ server <- function(input, output, session) {
 
   # Dynamic x-axis label for ranked plot — mirrors the map level dropdown
   ranked_xlab <- shiny::reactive({
+    if (isTRUE(input$top2box) && is_ordinal()) return("Top 2 responses (%)")
     lev <- input$map_level
     if (is.null(lev) || !nzchar(lev)) return("Response (%)")
     paste0(lev, " (%)")
@@ -726,7 +875,13 @@ server <- function(input, output, session) {
       dplyr::pull(.data$question) |>
       unique()
     q <- q[!is.na(q) & nzchar(q)]
-    if (length(q) > 0) q[1] else input$map_metric
+    txt <- if (length(q) > 0) q[1] else input$map_metric
+    if (isTRUE(input$top2box) && is_ordinal()) {
+      top2_levs <- get_top2_levels(input$map_metric)
+      txt <- paste0(txt, ' (combining \u201c', top2_levs[1],
+                    '\u201d and \u201c', top2_levs[2], '\u201d)')
+    }
+    txt
   })
 
   output$map_card_question <- shiny::renderText(map_question_text())
@@ -744,16 +899,49 @@ server <- function(input, output, session) {
   output$ranked_plot <- plotly::renderPlotly({
     shiny::req(input$map_metric, input$map_level)
 
-    tb <- besd_sum |>
-      dplyr::filter(
-        .data$item_id == input$map_metric,
-        as.character(.data$response) == input$map_level
-      ) |>
-      dplyr::arrange(.data$pct) |>
-      dplyr::mutate(
-        country_f = factor(as.character(.data$country),
-                           levels = as.character(.data$country))
-      )
+    if (isTRUE(input$top2box) && is_ordinal()) {
+      top2_levs <- get_top2_levels(input$map_metric)
+      has_ci    <- all(c("lcl", "ucl") %in% names(besd_sum))
+      tb_grp    <- besd_sum |>
+        dplyr::filter(
+          .data$item_id == input$map_metric,
+          as.character(.data$response) %in% top2_levs
+        ) |>
+        dplyr::group_by(.data$country)
+      if (has_ci) {
+        tb <- tb_grp |>
+          dplyr::summarise(
+            pct = sum(.data$pct, na.rm = TRUE),
+            se  = sqrt(sum(((.data$ucl - .data$lcl) / (2 * 1.96))^2, na.rm = TRUE)),
+            .groups = "drop"
+          ) |>
+          dplyr::mutate(
+            lcl = .data$pct - 1.96 * .data$se,
+            ucl = .data$pct + 1.96 * .data$se
+          ) |>
+          dplyr::select(-"se")
+      } else {
+        tb <- tb_grp |>
+          dplyr::summarise(pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
+      }
+      tb <- tb |>
+        dplyr::arrange(.data$pct) |>
+        dplyr::mutate(
+          country_f = factor(as.character(.data$country),
+                             levels = as.character(.data$country))
+        )
+    } else {
+      tb <- besd_sum |>
+        dplyr::filter(
+          .data$item_id == input$map_metric,
+          as.character(.data$response) == input$map_level
+        ) |>
+        dplyr::arrange(.data$pct) |>
+        dplyr::mutate(
+          country_f = factor(as.character(.data$country),
+                             levels = as.character(.data$country))
+        )
+    }
 
     ci_present <- all(c("lcl", "ucl") %in% names(tb)) &&
       any(!is.na(tb$lcl))

@@ -36,7 +36,8 @@ census or administrative data) for use with \code{\link[=besd_fitted_probs]{besd
 \code{\link[=besd_poststratify]{besd_poststratify()}}. Each row must represent a unique covariate
 combination (cell) with an associated population count in \code{pop_col}.
 Predictor columns are encoded to match the internal representation used
-during model fitting, using the metadata stored in the \code{fit} object.
+during model fitting, using the metadata stored in the \code{fit} object returned
+from \code{\link[=besd_regress]{besd_regress()}}.
 }
 \section{Sampling weights vs population counts}{
 
