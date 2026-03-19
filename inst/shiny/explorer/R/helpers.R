@@ -2,14 +2,20 @@
 # Sourced by app.R before the UI/server are defined.
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
-besd_sum      <- readRDS("data/besd_sum.rds")
-demo_sum      <- readRDS("data/demo_sum.rds")
+# User data files (.rds) come from the directory set by launch_explorer().
+# iso_lookup.csv is a static reference file bundled with the app.
+.data_dir <- shiny::getShinyOption("besd_data_dir", default = "data")
+
+besd_sum      <- readRDS(file.path(.data_dir, "besd_sum.rds"))
+demo_sum      <- readRDS(file.path(.data_dir, "demo_sum.rds"))
 iso_lookup    <- read.csv("data/iso_lookup.csv", stringsAsFactors = FALSE)
-breakdown_sum <- if (file.exists("data/breakdown_sum.rds"))
-  readRDS("data/breakdown_sum.rds") else tibble::tibble()
+breakdown_sum <- {
+  p <- file.path(.data_dir, "breakdown_sum.rds")
+  if (file.exists(p)) readRDS(p) else tibble::tibble()
+}
 
 # ── 2. Pre-compute top-box ────────────────────────────────────────────────────
-topbox_all <- readRDS("data/topbox_all.rds")
+topbox_all <- readRDS(file.path(.data_dir, "topbox_all.rds"))
 countries  <- sort(unique(as.character(besd_sum$country)))
 
 # ── 3. Dropdown choices (item-level only, grouped by domain) ──────────────────

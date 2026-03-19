@@ -44,29 +44,52 @@ See `vignettes/` for a more complete workflow.
 
 The package includes an interactive dashboard for exploring BeSD results across countries, demographic breakdowns, and item profiles.
 
-### Try it with the built-in demo data
+### Try it immediately with demo data
 
 ```r
 library(rbesd)
-
-# Run the prep script to generate the app data files using the bundled demo dataset
-source(system.file("shiny/explorer/prep_data.R", package = "rbesd"))
-
-# The script saves the data files and calls launch_explorer() automatically
+launch_explorer()  # launches with the bundled demo dataset
 ```
 
 ### Use your own data
 
-Open `prep_data.R` (found in `inst/shiny/explorer/`) and replace the demo data block with your own `as_besd()` call. The script walks through:
-
-1. Creating a `besd` object with `as_besd()`
-2. Computing `besd_sum` via `summary()`
-3. Computing demographic breakdowns via `besd_summary_by()` (optional — needed for the "BeSD by Demographic" tab)
-4. Saving the data files and launching the app
+Prepare your data once using `prepare_explorer_data()`, then launch as normal.
+Your data is saved outside the package so it survives package updates.
 
 ```r
-# After editing prep_data.R with your own data:
-source(system.file("shiny/explorer/prep_data.R", package = "rbesd"))
+library(rbesd)
+
+# Step 1: create a besd object from your survey data
+dat <- as_besd(
+  df          = your_dataframe,
+  country_col = "your_country_column",
+  dem_dict    = dem_dictionary()   # omit if you have no demographic variables
+)
+
+# Step 2: compute and save the Explorer data files
+prepare_explorer_data(dat)
+
+# Step 3: launch
+launch_explorer()
+```
+
+`prepare_explorer_data()` works through four steps and prints progress as it goes:
+
+| Step | File | Required? | Powers |
+|------|------|-----------|--------|
+| 1 | `besd_sum.rds` | Yes | All tabs |
+| 2 | `demo_sum.rds` | Yes | Country Profile — sample composition |
+| 3 | `topbox_all.rds` | Yes | Map, ranked items |
+| 4 | `breakdown_sum.rds` | No | BeSD by Demographic tab |
+
+Step 4 (demographic breakdowns) is skipped automatically if your `besd_data`
+object has no demographic variables. The tab will simply be empty in that case.
+
+If you have multiple datasets or want to store files in a specific location:
+
+```r
+prepare_explorer_data(dat, data_dir = "~/my_project/besd_data")
+launch_explorer(data_dir = "~/my_project/besd_data")
 ```
 
 ### What the Explorer shows
