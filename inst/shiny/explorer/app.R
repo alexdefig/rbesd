@@ -423,6 +423,13 @@ server <- function(input, output, session) {
     top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])[1]
     sel <- if (length(top_resp) > 0 && !is.na(top_resp) && top_resp %in% levs) top_resp else levs[1]
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
+    # Always redraw map on metric change — level observer won't fire if sel is
+    # unchanged (same label across items), leaving the map stale.
+    layers <- make_map_layers(input$map_metric, sel, top2 = isTRUE(input$top2box))
+    proxy  <- leaflet::leafletProxy("world_map") |>
+      leaflet::clearShapes() |>
+      leaflet::clearControls()
+    apply_map_layers(proxy, layers)
     # Show/hide the top-2-box checkbox depending on item type
     shinyjs::toggle(id = "top2box_div", condition = is_ordinal())
     if (!is_ordinal()) shiny::updateCheckboxInput(session, "top2box", value = FALSE)
@@ -964,14 +971,21 @@ server <- function(input, output, session) {
         tb <- tb_grp |>
           dplyr::summarise(
             pct = sum(.data$pct, na.rm = TRUE),
-            se  = sqrt(sum(((.data$ucl - .data$lcl) / (2 * 1.96))^2, na.rm = TRUE)),
+            k   = sum(.data$n_resp, na.rm = TRUE),
+            n   = dplyr::first(.data$n),
             .groups = "drop"
           ) |>
           dplyr::mutate(
-            lcl = pmax(0,   .data$pct - 1.96 * .data$se),
-            ucl = pmin(100, .data$pct + 1.96 * .data$se)
+            # Wilson score CI: z²/(4n²) inside sqrt, NOT z²/(4n)
+            p_hat  = .data$k / .data$n,
+            denom  = 1 + 1.96^2 / .data$n,
+            centre = (.data$p_hat + 1.96^2 / (2 * .data$n)) / .data$denom,
+            half   = 1.96 * sqrt(.data$p_hat * (1 - .data$p_hat) / .data$n +
+                                   1.96^2 / (4 * .data$n^2)) / .data$denom,
+            lcl    = pmax(0,   (.data$centre - .data$half) * 100),
+            ucl    = pmin(100, (.data$centre + .data$half) * 100)
           ) |>
-          dplyr::select(-"se")
+          dplyr::select(-"k", -"n", -"p_hat", -"denom", -"centre", -"half")
       } else {
         tb <- tb_grp |>
           dplyr::summarise(pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
