@@ -425,11 +425,11 @@ server <- function(input, output, session) {
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
     # Always redraw map on metric change — level observer won't fire if sel is
     # unchanged (same label across items), leaving the map stale.
-    layers <- make_map_layers(input$map_metric, sel, top2 = isTRUE(input$top2box))
-    proxy  <- leaflet::leafletProxy("world_map") |>
-      leaflet::clearShapes() |>
-      leaflet::clearControls()
-    apply_map_layers(proxy, layers)
+    # Use the *intended* top2 state: non-ordinal items will have top2box unchecked
+    # below, so don't pass the stale TRUE value from a previous ordinal item.
+    intended_top2 <- is_ordinal() && isTRUE(input$top2box)
+    layers <- make_map_layers(input$map_metric, sel, top2 = intended_top2)
+    apply_map_layers(leaflet::leafletProxy("world_map"), layers)
     # Show/hide the top-2-box checkbox depending on item type
     shinyjs::toggle(id = "top2box_div", condition = is_ordinal())
     if (!is_ordinal()) shiny::updateCheckboxInput(session, "top2box", value = FALSE)
@@ -441,21 +441,19 @@ server <- function(input, output, session) {
     shiny::req(nzchar(input$map_level))
     layers <- make_map_layers(input$map_metric, input$map_level,
                               top2 = isTRUE(input$top2box))
-    proxy  <- leaflet::leafletProxy("world_map") |>
-      leaflet::clearShapes() |>
-      leaflet::clearControls()
-    apply_map_layers(proxy, layers)
+    apply_map_layers(leaflet::leafletProxy("world_map"), layers)
   }, ignoreInit = TRUE)
 
-  # When top-2-box toggle changes: disable/enable level dropdown and redraw map
+  # When top-2-box toggle changes: disable/enable level dropdown and redraw map.
+  # Guard with is_ordinal(): for binary items, top2box is programmatically
+  # unchecked by the map_metric observer — we don't want that cascade to
+  # overwrite the map with a stale level from the previous item.
   shiny::observeEvent(input$top2box, {
     shinyjs::toggleState(id = "map_level", condition = !isTRUE(input$top2box))
+    if (!is_ordinal()) return()
     layers <- make_map_layers(input$map_metric, input$map_level,
                               top2 = isTRUE(input$top2box))
-    proxy  <- leaflet::leafletProxy("world_map") |>
-      leaflet::clearShapes() |>
-      leaflet::clearControls()
-    apply_map_layers(proxy, layers)
+    apply_map_layers(leaflet::leafletProxy("world_map"), layers)
   }, ignoreInit = TRUE)
 
   # Map click → navigate to country profile

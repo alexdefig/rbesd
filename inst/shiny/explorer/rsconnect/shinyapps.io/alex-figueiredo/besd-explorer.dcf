@@ -5,6 +5,6 @@ account: alex-figueiredo
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16840431
-bundleId: 11705785
+bundleId: 11755734
 url: https://alex-figueiredo.shinyapps.io/besd-explorer/
 version: 1
