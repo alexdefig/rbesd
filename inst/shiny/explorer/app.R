@@ -347,7 +347,15 @@ ui <- bslib::page_navbar(
             width   = "100%"
           ),
           shiny::hr(class = "my-2"),
-          shiny::tags$div(class = "sidebar-label", "Demographic variables"),
+          shiny::tags$div(
+            style = "display: flex; align-items: baseline; justify-content: space-between;",
+            shiny::tags$div(class = "sidebar-label", "Demographic variables"),
+            shiny::actionLink(
+              "bk_deselect_all",
+              "Deselect all",
+              style = "font-size: 0.75rem; color: #8492a6; text-decoration: none; margin-top: 0.6rem;"
+            )
+          ),
           shiny::checkboxGroupInput(
             "bk_dem_vars",
             label    = NULL,
@@ -1114,6 +1122,11 @@ server <- function(input, output, session) {
   })
 
   # ── BeSD by Demographic tab ───────────────────────────────────────────────
+
+  # Deselect all demographic variables
+  shiny::observeEvent(input$bk_deselect_all, {
+    shiny::updateCheckboxGroupInput(session, "bk_dem_vars", selected = character(0))
+  })
 
   # Render one card per (demographic variable × country) combination
   output$breakdown_panels <- shiny::renderUI({
