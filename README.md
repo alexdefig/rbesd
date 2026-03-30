@@ -43,7 +43,7 @@ data("data_demo", package = "rbesd")
 
 ### 2. Build a demographic dictionary
 
-`dem_dictionary()` covers age, gender, education, and income. Add custom variables (e.g. ethnicity) with `modify_dictionary()`:
+`dem_dictionary()` covers age and gender. Add custom variables (e.g. ethnicity) with `modify_dictionary()`:
 
 ```r
 dem_eth_df <- tibble::tibble(
