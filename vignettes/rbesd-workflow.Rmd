@@ -1,8 +1,8 @@
 ---
-title: "rbesd workflow: dictionaries, data preparation, summaries, and regression modelling"
+title: "rbesd workflow: data preparation, quality checks, regression, and MrP"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{rbesd workflow: dictionaries, data preparation, summaries, and regression modelling}
+  %\VignetteIndexEntry{rbesd workflow: data preparation, quality checks, regression, and MrP}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,447 +11,554 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  message = FALSE
+  message = FALSE,
+  warning = FALSE
 )
 set.seed(1)
 ```
 
-This vignette walks through a realistic analysis workflow in **rbesd**:
+This vignette walks through a realistic **rbesd** workflow using the bundled `data_demo`
+dataset (3,000 respondents across five countries: Brazil, Mexico, Senegal, Philippines,
+The UK):
 
-- how the **dictionary** controls harmonisation (item IDs, allowed levels, item types)
-- how to convert raw exports into a validated `besd_data` object with `as_besd()`
-- how to add / extend **socio-demographics** (predictors) with a dictionary
-- how to create weighted summaries and plots
-- how to run **by-country** and **multilevel** regressions
-- how the multilevel API separates **common** vs **context** predictors
-- how to fit Bayesian models with either **MCMC** or a faster **Laplace approximation**
+1. [Dictionaries](#1-dictionaries) — how item and demographic dictionaries control harmonisation
+2. [Data preparation](#2-data-preparation) — `as_besd()`, mapping, missing tokens, multichoice specs
+3. [Data quality](#3-data-quality) — missing summaries, rare levels, recoding
+4. [Summaries and plots](#4-summaries-and-plots) — response distributions, demographics, top-box, spider
+5. [Regression](#5-regression) — by-country, multilevel, ordinal, multichoice, Bayesian
+6. [Poststratification (MrP)](#6-poststratification-mrp) — population-weighted estimates
 
-To keep the vignette fast and robust, the Bayesian sections are shown as runnable code
-but evaluated only when you opt in (see “Running Bayesian examples” below).
+Bayesian and MrP sections are shown as code but not evaluated by default (they require
+`brms` and a Stan toolchain). Set the environment variable `RBESD_RUN_BAYES_VIGNETTE=true`
+to evaluate them.
 
 ```{r}
 library(rbesd)
 library(dplyr)
 ```
 
-## 1. Dictionaries: the contract for harmonisation
+---
 
-The BeSD dictionary is a table describing each item:
+## 1. Dictionaries
 
-- `item_id`: the standard name used in analyses (`tf_benefits`, `sp_peer`, …)
-- `item_type`: `binary`, `ordinal`, `multichoice`, …
-- `levels`: allowed response labels (used for validation + ordering)
-- `reverse`: whether an item should be treated as reverse-coded in “top-box” style summaries
-- the question text (long and short)
+### BeSD item dictionary
+
+The BeSD dictionary describes every standard item: its ID, type, allowed response levels,
+whether it is reverse-coded for top-box scoring, and the question text.
 
 ```{r}
 besd_dict <- besd_dictionary()
-besd_dict %>% 
-  select(item_id, domain, item_type, reverse) %>% 
-  head(10)
+
+besd_dict %>%
+  select(item_id, domain, item_type, reverse) %>%
+  print(n = 15)
 ```
 
-Inspect a single item’s allowed levels:
+Inspect a specific item's allowed levels:
 
 ```{r}
-besd_dict %>% 
-  filter(item_id %in% c("tf_benefits", "sp_peer", "pr_reasons_ease_access")) %>% 
+besd_dict %>%
+  filter(item_id %in% c("tf_benefits", "sp_peer", "pr_reasons_ease_access")) %>%
   select(item_id, item_type, levels)
 ```
 
-There is also a small built-in demographic dictionary (`dem_dictionary()`) that you can
-extend with additional predictors:
+### Demographic dictionary
+
+`dem_dictionary()` covers age and gender. Custom variables — such as ethnicity — can be
+added with `modify_dictionary()`.
 
 ```{r}
-dem_dict <- dem_dictionary()
-dem_dict
+dem_dictionary()
 ```
 
-## 2. A toy “raw export” dataset included with the package
+---
 
-We’ll use a synthetic dataset shipped with **rbesd** via `besd_toy_raw()`. It deliberately looks like a raw export:
+## 2. Data preparation
 
-- raw question column names (`Q_*`)
-- text responses (sometimes including common missing tokens)
-- checkbox-style columns for a multichoice item
-- a `weight` column and a respondent ID
+### Load the demo dataset
+
+`data_demo` is a plain data frame with columns already named using BeSD item IDs. It ships
+with the package and is used throughout this vignette.
 
 ```{r}
-raw <- besd_toy_raw()
-raw %>% glimpse()
+data("data_demo", package = "rbesd")
+dplyr::glimpse(data_demo[, 1:10])
 ```
 
-## 3. Converting raw exports to `besd_data` with `as_besd()`
+### Extend the demographic dictionary
 
-### 3.1 Mapping raw columns to standard `item_id`s
-
-`as_besd()` can take a **mapping** from raw columns to standard dictionary IDs.
-
-- names = raw column names
-- values = dictionary `item_id`
+`data_demo` contains an `dem_eth` (ethnicity) column that is not in the default
+`dem_dictionary()`. Register it before calling `as_besd()`:
 
 ```{r}
-mapping <- c(
-  Q_benefits     = "tf_benefits",
-  Q_safety       = "tf_safety",
-  Q_peer_norm    = "sp_peer",
-  # socio-demographics (predictors)
-  Q_gender       = "dem_gen",
-  Q_age          = "dem_age",
-  Q_education    = "dem_edu",
-  Q_district     = "ctx_district",
-  # multichoice checkboxes (multiple raw cols -> one multichoice item_id)
-  Q_access_nothing       = "pr_reasons_ease_access",
-  Q_access_clinic_hard   = "pr_reasons_ease_access",
-  Q_access_opening_times = "pr_reasons_ease_access",
-  Q_access_turned_away   = "pr_reasons_ease_access",
-  Q_access_wait_long     = "pr_reasons_ease_access"
+dem_eth_df <- tibble::tibble(
+  item_id        = "dem_eth",
+  domain         = "predictor",
+  item_type      = "categorical",
+  levels         = list(sort(unique(data_demo$dem_eth))),
+  reverse        = NA,
+  question       = "What is your ethnicity?",
+  question_short = "Ethnicity"
 )
-mapping
-```
 
-### 3.2 Extending the demographic dictionary (adding education + a context predictor)
-
-The built-in `dem_dictionary()` contains only gender and age. Here we extend it with:
-
-- `dem_edu`: an education predictor
-- `ctx_district`: a within-country context predictor (used later in multilevel models)
-
-We do this by appending rows with the required dictionary columns.
-
-```{r}
-dem_ext <- modify_dictionary(
-  df = tibble::tibble(
-    item_id = c("dem_edu", "ctx_district"),
-    domain = c("predictor", "predictor"),
-    item_type = c("categorical", "categorical"),
-    levels = list(
-      c("Primary", "Secondary", "Tertiary", "Don't know"),
-      c("North", "Central", "South", "East", "West", "Capital",
-        "Coastal", "Inland", "Islands", "Urban belt", "Rural belt", "Highlands")
-    ),
-    reverse = c(NA, NA),
-    question = c("What is the highest level of education completed?",
-                 "Which district do you live in?"),
-    question_short = c("Education", "District")
-  ),
-  dict = dem_dictionary(),
+dem_dict <- modify_dictionary(
+  df      = dem_eth_df,
+  dict    = dem_dictionary(),
   replace = FALSE
 )
 
-dem_ext
+dem_dict
 ```
 
-### 3.3 Multichoice specs: packing checkbox columns
+### Create the `besd_data` object
 
-The BeSD dictionary treats `pr_reasons_ease_access` as a **multichoice** item: in raw exports,
-it is often represented as multiple checkbox columns. To convert checkboxes into a single packed
-multichoice column, provide a `multichoice_specs` entry describing:
-
-- encoding (`"binary"`: Yes/No markers)
-- which label each checkbox corresponds to (`col_labels`)
-
-To avoid typos, we fetch the canonical labels from the dictionary:
+When your columns are already named with standard BeSD item IDs (as in `data_demo`), no
+`mapping` argument is needed. Declare free-text missing tokens via `missing_tokens` so they
+are recoded to `NA`:
 
 ```{r}
-access_levels <- besd_dict$levels[[match("pr_reasons_ease_access", besd_dict$item_id)]]
-access_levels[1:5]
+y <- as_besd(
+  df             = data_demo,
+  country_col    = "country",
+  dem_dict       = dem_dict,
+  missing_tokens = list(.all = c("Prefer not to say", "Don't Know")),
+  missing_action = "na"
+)
+
+print(y)
 ```
 
-```{r}
-multichoice_specs <- list(
-  pr_reasons_ease_access = list(
-    encoding = "binary",
-    selected_values = c("yes", "selected", "true", "1"),
-    unselected_values = c("no", "not selected", "false", "0"),
-    col_labels = access_levels[1:5] # aligns with the 5 Q_access_* columns in mapping
+#### Using a mapping for raw exports
+
+If your raw data uses survey-specific column names, supply a named character vector mapping
+raw names to BeSD item IDs:
+
+```r
+mapping <- c(
+  B1         = "tf_benefits",
+  B2         = "tf_safety",
+  B5         = "sp_peer",
+  S3_RECODE  = "dem_age",
+  S2         = "dem_gen",
+  # multichoice: multiple source columns → one item ID
+  setNames(rep("pr_reasons_ease_access", 12), paste0("A_B16_", 1:12))
+)
+
+y <- as_besd(
+  df             = raw_data,
+  country_col    = "country",
+  dem_dict       = dem_dict,
+  mapping        = mapping,
+  missing_tokens = list(.all = c("Prefer not to say", "Don't Know")),
+  missing_action = "na"
+)
+```
+
+#### Multichoice items with text-prefix encoding
+
+For multichoice items stored as packed text strings with a "Not " prefix indicating
+non-selection, use `multichoice_specs`:
+
+```r
+y <- as_besd(
+  ...,
+  multichoice_specs = list(
+    pr_reasons_ease_access = list(encoding = "text_prefix", not_prefix = "Not "),
+    pr_service_quality     = list(encoding = "text_prefix", not_prefix = "Not ")
   )
 )
 ```
 
-### 3.4 Create the `besd_data` object (with validation)
-
-Now we run `as_besd()`:
-
-- `missing_tokens` declares common “missing” responses
-- `missing_action = "na"` turns them into `NA`
-- `unknown_action = "error"` stops if something isn’t in the dictionary (useful for QA)
+### Validate the object
 
 ```{r}
-besd <- as_besd(
-  raw,
-  mapping = mapping,
-  dem_dict = dem_ext,
-  multichoice_specs = multichoice_specs,
-  country_col = "country",
-  weight_col = "weight",
-  id_col = "resp_id",
-  missing_tokens = c("Don't know", "Refused"),
-  missing_action = "na",
-  unknown_action = "error"
-)
-
-besd
-besd_validate(besd, strict = TRUE)
+besd_validate(y)
 ```
 
-## 4. What happens when data aren’t in the right form?
+---
 
-### 4.1 No mapping (or no standard item columns) → error
+## 3. Data quality
 
-```{r, error=TRUE}
-as_besd(raw)
+### Missing data summary
+
+```{r}
+besd_missing_summary(y)
 ```
 
-### 4.2 Unknown values → error (or coercion to `NA`)
+The joint listwise fraction shows how many rows complete-case deletion will remove across
+all BeSD items.
 
-If a value is not in the dictionary levels, `unknown_action = "error"` stops early.
+### Response distributions and demographics
 
-```{r, error=TRUE}
-raw_bad <- raw
-raw_bad$Q_peer_norm[1] <- "Maybe"
-as_besd(
-  raw_bad,
-  mapping = mapping,
-  dem_dict = dem_ext,
-  multichoice_specs = multichoice_specs,
-  missing_tokens = c("Don't know", "Refused"),
-  unknown_action = "error"
-)
+```{r}
+smry <- summary(y)
+print(smry, n = 15)
 ```
 
-If you’re doing exploratory work, you can instead coerce unknown values to `NA`:
+```{r}
+besd_summary_demographics(smry)
+```
 
-```{r, warning=TRUE}
-besd_soft <- as_besd(
-  raw_bad,
-  mapping = mapping,
-  dem_dict = dem_ext,
-  multichoice_specs = multichoice_specs,
-  missing_tokens = c("Don't know", "Refused"),
-  unknown_action = "na"
+### Check for rare factor levels
+
+Thin cells within a country can cause near-separation in regression models. Inspect before
+fitting — ethnicity is typically the most problematic:
+
+```{r}
+rl <- besd_rare_levels(y, predictors = c("dem_eth", "dem_gen", "dem_age"))
+print(rl %>% arrange(country), n = Inf)
+```
+
+### Recode rare or unwanted levels
+
+Set a level to `NA` and drop it from the factor:
+
+```{r}
+y <- besd_recode_missing(
+  y,
+  tokens      = list(dem_gen = "Other"),
+  drop_levels = TRUE
 )
 ```
 
-### 4.3 Keeping missing tokens as explicit levels
-
-Sometimes you want missing codes to remain visible in summaries (e.g., “Don’t know”).
-Use `missing_action = "keep"`:
+Merge sparse ethnicity groups into "Other" to avoid near-separation:
 
 ```{r}
-besd_keep_missing <- as_besd(
-  raw,
-  mapping = mapping,
-  dem_dict = dem_ext,
-  multichoice_specs = multichoice_specs,
-  missing_tokens = c("Don't know", "Refused"),
-  missing_action = "keep",
-  unknown_action = "error"
+y <- besd_recode_levels(
+  y,
+  col    = "dem_eth",
+  recode = c(
+    # Brazil
+    "Oriental"   = "Other",
+    "Indigenous" = "Other",
+    # Mexico
+    "Afro-descent / black" = "Other",
+    "Mulatto"              = "Other",
+    "Romani / Gypsy"       = "Other",
+    # Philippines
+    "Tausog"       = "Other",
+    "Maguindanao"  = "Other"
+  )
 )
-
-table(besd_keep_missing$sp_peer, useNA = "ifany")
 ```
 
-## 5. Summaries and plots
-
-### 5.1 Response distributions (weighted)
-
-`summary(besd_data)` returns a `besd_summary_tbl` you can plot directly.
+Re-inspect to confirm:
 
 ```{r}
-sum_tbl <- summary(besd, include_demographics = TRUE)
-sum_tbl %>% 
-  select(country, item_id, response, pct, lcl, ucl) %>% 
-  head(12)
+rl2 <- besd_rare_levels(y, predictors = c("dem_eth", "dem_gen", "dem_age"))
+print(rl2 %>% arrange(country), n = Inf)
 ```
 
-Bar plots (filtering to a few items):
+---
 
-```{r}
+## 4. Summaries and plots
+
+### Response distributions
+
+```{r, fig.width=7, fig.height=5}
+smry <- summary(y)
+
 plot_besd_bars(
-  sum_tbl %>% filter(item_id %in% c("tf_benefits", "tf_safety", "sp_peer"))
+  smry %>% filter(item_id %in% c("tf_benefits", "tf_safety", "sp_peer"))
 )
 ```
 
-Multichoice plots:
+### Multichoice items
 
-```{r}
-plot_besd_multichoice_bars(sum_tbl, item_ids = "pr_reasons_ease_access")
+```{r, fig.width=7, fig.height=4}
+plot_besd_multichoice_bars(smry, item_ids = "pr_reasons_ease_access")
 ```
 
-### 5.2 Top-box summaries and spider plots
-
-Top-box is often “Yes” for binary items or the highest agreement/importance category for ordinal items.
+### Top-box summary
 
 ```{r}
-tb <- besd_topbox(sum_tbl)
-tb %>% select(country, item_id, topbox, pct) %>% head(10)
+tb <- besd_topbox(smry)
+tb %>%
+  select(country, item_id, topbox, pct) %>%
+  print(n = 15)
 ```
 
-```{r}
+### Spider / radar plot
+
+```{r, fig.width=7, fig.height=6}
 plot_besd_spider(
-  sum_tbl,
-  item_ids = c("tf_benefits", "tf_safety", "sp_peer"),
-  compare = "all"
+  smry,
+  item_ids = c("tf_benefits", "tf_safety", "sp_peer", "sp_family",
+               "pr_recall", "pr_know_where"),
+  compare  = "all"
 )
 ```
 
-## 6. Regression modelling
+### Ranked items
 
-### 6.1 By-country regressions (fast defaults)
+```{r, fig.width=7, fig.height=5}
+plot_besd_ranked(smry)
+```
 
-By-country models fit the same specification separately within each country.
+---
+
+## 5. Regression
+
+All regression is handled by `besd_regress()`. Choose `scope` (`"by_country"` or
+`"multilevel"`) and `engine` (`"frequentist"` or `"bayes"`). Extract results with
+`tidy_model()`.
+
+### 5.1 By-country, frequentist (binary outcome)
+
+Fits a separate logistic regression per country:
 
 ```{r}
 fit_bc <- besd_regress(
-  besd,
-  outcome = "sp_peer",
-  predictors = c("dem_gen", "dem_age", "dem_edu"),
-  scope = "by_country",
-  engine = "frequentist"
+  y,
+  outcome    = "sp_peer",
+  predictors = c("dem_gen", "dem_age"),
+  scope      = "by_country",
+  engine     = "frequentist"
 )
 
-tidy_bc <- besd_tidy(fit_bc, exponentiate = TRUE)
-tidy_bc %>% 
-  filter(effect_type == "fixed") %>% 
-  arrange(country, term) %>% 
-  head(12)
+# Tidy fixed effects
+tidy_model(fit_bc) %>% print(n = 15)
 ```
 
-### 6.2 Multilevel regressions: common vs context predictors
-
-In multilevel mode, you can supply predictors as a list with two roles:
-
-- `common`: effects that are assumed to be *comparable across countries*  
-  (and can optionally have random slopes by country)
-- `context`: within-country predictors whose interpretation can be country-specific  
-  (rbesd expands these into country-specific contrasts, with within-country reference levels)
+Exponentiate to get odds ratios:
 
 ```{r}
-preds <- list(
-  common = c("dem_gen", "dem_age", "dem_edu"),
-  context = c("ctx_district")
-)
+tidy_model(fit_bc, exponentiate = TRUE) %>% print(n = 15)
 ```
 
-A multilevel frequentist logistic regression requires **lme4**. If it’s installed:
+### 5.2 Multilevel, frequentist (binary outcome)
 
-```{r, eval = requireNamespace("lme4", quietly = TRUE)}
+A single model with country as the random-effect grouping variable. `predictors` can split
+into `common` (pooled across countries) and `context` (country-specific dummies, dropped
+when the within-country cell count falls below `min_n_context`):
+
+```{r}
 fit_ml <- besd_regress(
-  besd,
-  outcome = "sp_peer",
-  predictors = preds,
-  scope = "multilevel",
-  engine = "frequentist",
-  random_slopes = TRUE
+  y,
+  outcome       = "sp_peer",
+  predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
+  scope         = "multilevel",
+  engine        = "frequentist",
+  min_n_context = 10L
 )
 
-tidy_ml <- besd_tidy(fit_ml, exponentiate = TRUE)
-tidy_ml %>% 
-  filter(effect_type == "fixed") %>% 
-  head(12)
+# Fixed effects + random SD parameters + country BLUPs
+tidy_model(fit_ml, include_random = TRUE) %>% print(n = 20)
 ```
 
-To see how context predictors were expanded, inspect the term map:
+### 5.3 Ordinal outcome
+
+`besd_regress()` detects the item type from the dictionary and switches to a cumulative
+logit model automatically:
 
 ```{r}
-# The term map describes how model terms relate back to variables, levels, and countries.
-# (This is useful for reporting and for post-processing coefficients.)
-if (exists("fit_ml")) {
-  nm <- names(fit_ml$meta$term_map)
-  head(nm[grepl("^ctx_", nm)], 10)
-}
+fit_ord <- besd_regress(
+  y,
+  outcome    = "tf_benefits",
+  predictors = c("dem_gen", "dem_age"),
+  scope      = "by_country",
+  engine     = "frequentist"
+)
+
+tidy_model(fit_ord) %>% print(n = 15)
 ```
 
-### 6.3 Multichoice outcomes in regression
+### 5.4 Multichoice outcome
 
-If you regress a multichoice outcome, `besd_regress()` automatically expands it into
-multiple binary outcomes (one per option), and fits each one.
+Multichoice items are split into one binary column per response option. `besd_regress()`
+fits a separate logistic model for each option automatically. The `level` column in the
+tidy output contains the response label:
 
-```{r, eval = FALSE}
+```{r}
 fit_mc <- besd_regress(
-  besd,
-  outcome = "pr_reasons_ease_access",
-  predictors = c("dem_gen", "dem_age", "dem_edu"),
-  scope = "by_country",
-  engine = "frequentist"
+  y,
+  outcome    = "pr_reasons_ease_access",
+  predictors = c("dem_gen", "dem_age"),
+  scope      = "by_country",
+  engine     = "frequentist"
 )
 
-# `fit_mc$meta$outcomes` contains the expanded outcome names
-fit_mc$meta$outcomes
+tidy_model(fit_mc) %>% print(n = 20)
 ```
 
-## 7. Bayesian modelling: MCMC and Laplace
+### 5.5 Looping over multiple outcomes
 
-Bayesian regression uses **brms**. rbesd forwards `...` to `brms::brm()`, so you can control:
+```{r}
+outcomes <- c("sp_peer", "sp_family", "pr_recall")
 
-- backend (`backend = "cmdstanr"` recommended)
-- algorithm (`"sampling"` for MCMC; `"laplace"` for fast approximation)
-- priors, chains, iter, adapt_delta, etc.
+fits <- lapply(outcomes, function(yy) {
+  besd_regress(
+    y,
+    outcome    = yy,
+    predictors = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
+    scope      = "multilevel",
+    engine     = "frequentist"
+  )
+})
+names(fits) <- outcomes
 
-### Running Bayesian examples
+results <- dplyr::bind_rows(lapply(fits, tidy_model))
+print(results, n = 20)
+```
 
-To evaluate the Bayesian chunks in this vignette, set:
+### 5.6 Bayesian multilevel
 
-- `RBESD_RUN_BAYES_VIGNETTE=true`
-
-### 7.1 MCMC sampling (HMC)
+Requires `brms` and a configured Stan toolchain. First-time compilation takes ~1–2 minutes.
+Set `RBESD_RUN_BAYES_VIGNETTE=true` to evaluate.
 
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
-fit_bayes_mcmc <- besd_regress(
-  besd,
-  outcome = "sp_peer",
-  predictors = preds,
-  scope = "multilevel",
-  engine = "bayes",
-  random_slopes = TRUE,
-  correlated_re = FALSE,   # use `||` in the random-effects term (often faster)
-  backend = "cmdstanr",
-  chains = 2,
-  iter = 1000,
-  seed = 1,
-  refresh = 0
+fit_bayes <- besd_regress(
+  y,
+  outcome       = "sp_peer",
+  predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
+  scope         = "multilevel",
+  engine        = "bayes",
+  chains        = 2,
+  iter          = 2000,
+  cores         = 2,
+  control       = list(adapt_delta = 0.95)
 )
 
-besd_tidy(fit_bayes_mcmc, exponentiate = TRUE) %>% 
-  filter(effect_type == "fixed") %>% 
-  head(12)
+td <- tidy_model(fit_bayes)
+
+# Check convergence: Rhat < 1.01 and ESS > 400 indicate reliable inference
+td[, c("variable", "level", "country", "rhat", "ess")]
 ```
 
-### 7.2 Laplace approximation (fast, approximate)
-
-Laplace can be dramatically faster than full MCMC for larger datasets, at the cost of
-being an approximation. It is most commonly used via the **cmdstanr** backend.
+**Random slopes** allow the effect of common predictors to vary by country.
+`correlated_re = FALSE` fits independent variances — more stable with few countries:
 
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
-fit_bayes_laplace <- besd_regress(
-  besd,
-  outcome = "sp_peer",
-  predictors = preds,
-  scope = "multilevel",
-  engine = "bayes",
-  random_slopes = TRUE,
-  correlated_re = FALSE,
-  backend = "cmdstanr",
-  algorithm = "laplace",
-  seed = 1,
-  refresh = 0
+fit_rs <- besd_regress(
+  y,
+  outcome        = "sp_peer",
+  predictors     = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
+  scope          = "multilevel",
+  engine         = "bayes",
+  random_slopes  = TRUE,
+  correlated_re  = FALSE,
+  chains         = 2,
+  iter           = 2000,
+  cores          = 2,
+  control        = list(adapt_delta = 0.99)
 )
 
-besd_tidy(fit_bayes_laplace, exponentiate = TRUE) %>% 
-  filter(effect_type == "fixed") %>% 
-  head(12)
+td_rs <- tidy_model(fit_rs, include_random = TRUE)
+
+# SD parameters (one per random-effect term)
+td_rs[td_rs$param_type == "sd",
+      c("variable", "level", "estimate", "lower", "upper")]
+
+# Country-level BLUPs
+td_rs[td_rs$param_type == "ranef",
+      c("variable", "level", "country", "estimate", "lower", "upper")]
 ```
 
-## 8. Where to go next
+For large models, the `cmdstanr` backend is faster and supports within-chain parallelism:
 
-Typical next steps for real projects:
+```{r, eval = requireNamespace("brms", quietly = TRUE) && requireNamespace("cmdstanr", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+fit_cmd <- besd_regress(
+  y,
+  outcome        = "sp_peer",
+  predictors     = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
+  scope          = "multilevel",
+  engine         = "bayes",
+  random_slopes  = TRUE,
+  correlated_re  = FALSE,
+  backend        = "cmdstanr",
+  chains         = 2,
+  iter           = 2000,
+  cores          = 2,
+  threads        = brms::threading(4),
+  control        = list(adapt_delta = 0.99)
+)
 
-- tailor dictionaries with `modify_dictionary()` (e.g. translated labels; survey-specific options)
-- add more predictors via a demographic/predictor dictionary and pass them to `as_besd()`
-- use multilevel models with:
-  - richer `common` predictors (individual-level factors)
-  - `context` predictors describing within-country strata (district, facility type, sampling frame)
-- for Bayesian fits:
-  - start with `algorithm = "laplace"` to iterate quickly
-  - switch to full MCMC (`algorithm = "sampling"`) for final inference and diagnostics
+tidy_model(fit_cmd, include_random = TRUE) %>% print(n = 20)
+```
+
+---
+
+## 6. Poststratification (MrP)
+
+Multilevel regression with poststratification (MrP) reweights model predictions to match a
+population census frame, correcting for non-representative samples.
+
+Requires a Bayesian multilevel model — set `RBESD_RUN_BAYES_VIGNETTE=true` to evaluate.
+
+### Load the poststratification frame
+
+`ps_demo` is a bundled census-style data frame of population cell counts for each
+country × gender × age combination:
+
+```{r}
+data("ps_demo", package = "rbesd")
+print(ps_demo, n = 10)
+```
+
+### Fit a Bayesian multilevel model
+
+Context-specific predictors are not supported for MrP — use `common` predictors only:
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+fit_mrp <- besd_regress(
+  y,
+  outcome        = "sp_peer",
+  predictors     = list(common = c("dem_gen", "dem_age")),
+  scope          = "multilevel",
+  engine         = "bayes",
+  random_slopes  = TRUE,
+  correlated_re  = FALSE,
+  backend        = "cmdstanr",
+  chains         = 2,
+  iter           = 1000,
+  cores          = 2,
+  threads        = brms::threading(4),
+  control        = list(adapt_delta = 0.99)
+)
+```
+
+### Build the poststrat frame and get fitted probabilities
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+frame  <- besd_poststrat_frame(ps_demo, fit = fit_mrp, pop_col = "n_pop")
+fitted <- besd_fitted_probs(fit_mrp, newdata = frame)
+```
+
+### Poststratify
+
+Population-weighted national estimates (one row per country):
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+mrp_national <- besd_poststratify(fitted, frame)
+print(mrp_national)
+```
+
+Estimates broken down by demographic subgroup:
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+mrp_by_dem <- besd_poststratify(fitted, frame, by = c("dem_gen", "dem_age"))
+print(mrp_by_dem)
+```
+
+Add a pooled "Overall" row across all countries:
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+mrp_overall <- besd_poststratify(fitted, frame, overall = TRUE)
+print(mrp_overall)
+```
+
+Retrieve the full posterior draw distribution per group (Bayesian models only):
+
+```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
+out <- besd_poststratify(fitted, frame, post_probs = TRUE)
+out$estimates   # median + 95% credible interval
+out$post_probs  # list-column of posterior draws per group
+```
+
+---
+
+## Where to go next
+
+- Explore the BeSD Explorer Shiny app: `launch_explorer()`
+- Prepare Explorer data from your own `besd_data` object: `prepare_explorer_data(dat)`
+- Read `?besd_regress`, `?tidy_model`, and `?besd_poststratify` for full parameter documentation
