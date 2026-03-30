@@ -1,3 +1,134 @@
+# ── Palette & theme utilities ─────────────────────────────────────────────────
+
+#' IMMS palette
+#' @export
+besd_palette_imms <- function(n,
+                              reverse = FALSE,
+                              alpha = 1,
+                              anchors = c("#CC278D", "#926F97", "#4F8D9A")) {
+  if (!is.numeric(n) || length(n) != 1 || is.na(n) || n < 1) {
+    stop("n must be a single positive number", call. = FALSE)
+  }
+  cols <- grDevices::colorRampPalette(anchors)(as.integer(n))
+  if (isTRUE(reverse)) cols <- rev(cols)
+  grDevices::adjustcolor(cols, alpha.f = alpha)
+}
+
+#' @keywords internal
+.as_palette <- function(palette, n, levels = NULL) {
+  .besd_resolve_palette(palette = palette, n = n, levels = levels)
+}
+
+#' @keywords internal
+.besd_resolve_palette <- function(palette = "imms", n, levels = NULL) {
+  if (is.null(palette)) palette <- "imms"
+
+  if (is.character(palette) && length(palette) == 1) {
+    pal_name <- tolower(palette)
+    cols <- switch(pal_name, "imms" = besd_palette_imms(n), NULL)
+    if (!is.null(cols)) {
+      if (!is.null(levels)) names(cols) <- levels
+      return(cols)
+    }
+  }
+
+  if (is.function(palette)) {
+    cols <- palette(n)
+    if (!is.null(levels)) names(cols) <- levels
+    return(cols)
+  }
+
+  if (is.character(palette)) {
+    cols <- palette
+    if (!is.null(levels) && is.null(names(cols))) {
+      if (length(cols) < length(levels)) {
+        cols <- grDevices::colorRampPalette(cols)(length(levels))
+      }
+      names(cols) <- levels
+    }
+    return(cols)
+  }
+
+  stop("palette must be NULL, a palette name, a function(n), or a ",
+       "character vector of colours", call. = FALSE)
+}
+
+#' Default BeSD theme
+#' @export
+besd_theme <- function(base_size = 12) {
+  ggplot2::theme_minimal(base_size = base_size) +
+    ggplot2::theme(
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom",
+      strip.background = ggplot2::element_rect(fill = "grey95", colour = NA),
+      strip.text = ggplot2::element_text(face = "bold"),
+      axis.title.x = ggplot2::element_text(face = "bold"),
+      axis.title.y = ggplot2::element_text(face = "bold")
+    )
+}
+
+#' @keywords internal
+.wrap_lines <- function(x, width = 28, n_lines = 2) {
+  x <- x %||% ""
+  w <- stringr::str_wrap(x, width = width)
+  parts <- strsplit(w, "\n", fixed = TRUE)
+  vapply(parts, function(p) {
+    if (length(p) <= n_lines) return(paste(p, collapse = "\n"))
+    p <- p[seq_len(n_lines)]
+    p[n_lines] <- stringr::str_trunc(p[n_lines], width = max(1, width - 1),
+                                     side = "right", ellipsis = "\u2026")
+    paste(p, collapse = "\n")
+  }, character(1))
+}
+
+#' @keywords internal
+.coerce_country <- function(x) {
+  if (!"country" %in% names(x)) x$country <- "national"
+  x
+}
+
+#' @keywords internal
+.besd_apply_response_order <- function(sum_tbl) {
+  besd_dict <- attr(sum_tbl, "besd_dict")
+  dem_dict  <- attr(sum_tbl, "dem_dict")
+
+  dict <- dplyr::bind_rows(
+    if (is.null(besd_dict)) tibble::tibble() else tibble::as_tibble(besd_dict),
+    if (is.null(dem_dict))  tibble::tibble() else tibble::as_tibble(dem_dict)
+  )
+
+  if (!nrow(dict)) return(sum_tbl)
+
+  dict <- dict |>
+    dplyr::filter(.data$item_id %in% unique(sum_tbl$item_id))
+
+  lvl_keys <- unlist(
+    Map(function(id, levs, rvv) {
+      if (isTRUE(rvv)) levs <- rev(levs)
+      paste(id, as.character(levs), sep = "___")
+    },
+    dict$item_id, dict$levels, dict$reverse),
+    use.names = FALSE
+  )
+
+  sum_tbl <- sum_tbl |>
+    dplyr::mutate(response_key = paste(.data$item_id, .data$response,
+                                       sep = "___"))
+
+  extra <- setdiff(unique(sum_tbl$response_key), lvl_keys)
+  lvl_keys <- c(lvl_keys, extra)
+
+  sum_tbl |>
+    dplyr::mutate(
+      response_key = factor(.data$response_key, levels = lvl_keys),
+      item_id = factor(.data$item_id, levels = dict$item_id)
+    )
+}
+
+
+# ── Bar plots ─────────────────────────────────────────────────────────────────
+
 #' Bar plots for BeSD response distributions
 #'
 #' Produces stacked (multi-country) or single-country horizontal bar charts
@@ -42,7 +173,7 @@
 #'
 #' @export
 plot_besd_bars <- function(sum_tbl,
-                           include_item_types = c("binary", "ordinal", 
+                           include_item_types = c("binary", "ordinal",
                                                   "categorical", "unknown"),
                            include_multichoice = FALSE,
                            sort_bars = FALSE,
@@ -52,11 +183,11 @@ plot_besd_bars <- function(sum_tbl,
                            label_min = 6,
                            wrap_width = 50,
                            combine_domains = FALSE) {
-  
+
   .assert_besd_summary_tbl(sum_tbl, fn = "plot_besd_bars")
   sum_tbl <- .coerce_country(sum_tbl)
   sum_tbl <- .besd_apply_response_order(sum_tbl)
-  
+
   dd <- sum_tbl
   if (isTRUE(include_multichoice) && !is.null(include_item_types)) {
     include_item_types <- union(include_item_types, "multichoice")
@@ -67,19 +198,19 @@ plot_besd_bars <- function(sum_tbl,
   if (!isTRUE(include_multichoice)) {
     dd <- dd |> dplyr::filter(.data$item_type != "multichoice")
   }
-  
+
   dd <- dd |>
     dplyr::mutate(
       item_lab = .wrap_lines(dplyr::coalesce(.data$question, .data$item_id),
                              width = wrap_width, n_lines = 3),
       country = as.factor(.data$country)
     )
-  
+
   n_countries <- dplyr::n_distinct(dd$country)
   dd_nm <- dd |> dplyr::filter(.data$item_type != "multichoice")
   dd_mc <- dd |> dplyr::filter(.data$item_type == "multichoice")
-  
-  
+
+
   sort_countries <- function(di, response_level = NULL) {
     if (!is.null(response_level)) {
       di <- di |> dplyr::filter(as.character(.data$response) == response_level)
@@ -89,29 +220,29 @@ plot_besd_bars <- function(sum_tbl,
       tibble::deframe()
     names(sort(sort_vals))
   }
-  
+
   make_one_nm <- function(item) {
     di <- dd_nm |> dplyr::filter(.data$item_id == item)
     item_resp_levels <- unique(as.character(di$response))
-    di <- di |> dplyr::mutate(response = factor(.data$response, 
+    di <- di |> dplyr::mutate(response = factor(.data$response,
                                                 levels = item_resp_levels))
-    item_pal <- .as_palette(palette, length(item_resp_levels), 
+    item_pal <- .as_palette(palette, length(item_resp_levels),
                             levels = item_resp_levels)
-    
-    
+
+
     if (n_countries <= 1) {
       p <- ggplot2::ggplot(
-        di, 
+        di,
         ggplot2::aes(x = if (sort_bars) {
-          reorder(.data$response, .data$pct) 
-          
+          reorder(.data$response, .data$pct)
+
         } else .data$response, y = .data$pct, fill = .data$response)) +
         ggplot2::geom_col(width = 0.8, colour = "white", linewidth = 0.3) +
         ggplot2::scale_fill_manual(values = item_pal, guide = "none") +
-        ggplot2::labs(x = NULL, y = "Percent", 
+        ggplot2::labs(x = NULL, y = "Percent",
                       title = unique(di$item_lab)) +
         besd_theme(base_size) +
-        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, 
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45,
                                                            hjust = 1))
       if (isTRUE(label_pct)) {
         p <- p + ggplot2::geom_text(
@@ -122,23 +253,23 @@ plot_besd_bars <- function(sum_tbl,
         )
       }
     } else {
-      
+
       if (sort_bars) {
         country_order <- sort_countries(di, item_resp_levels[length(item_resp_levels)])
-        di <- di |> dplyr::mutate(country = factor(as.character(.data$country), 
+        di <- di |> dplyr::mutate(country = factor(as.character(.data$country),
                                                    levels = country_order))
       }
-      
-      p <- ggplot2::ggplot(di, ggplot2::aes(x = .data$country, 
+
+      p <- ggplot2::ggplot(di, ggplot2::aes(x = .data$country,
                                             y = .data$pct, fill = .data$response)) +
-        ggplot2::geom_col(position = "stack", width = 0.8, 
+        ggplot2::geom_col(position = "stack", width = 0.8,
                           colour = "white", linewidth = 0.3) +
         ggplot2::scale_y_continuous(
           limits = c(0, 102),
           expand = c(0, 0)
         ) +
         ggplot2::scale_fill_manual(values = item_pal, name = "Response") +
-        ggplot2::labs(x = NULL, y = "Percent", 
+        ggplot2::labs(x = NULL, y = "Percent",
                       title = unique(di$item_lab)) +
         besd_theme(base_size) +
         ggplot2::theme(
@@ -160,7 +291,7 @@ plot_besd_bars <- function(sum_tbl,
     }
     p
   }
-  
+
   make_mc_plots <- function() {
     dd_mc2 <- dd_mc |>
       dplyr::mutate(
@@ -172,7 +303,6 @@ plot_besd_bars <- function(sum_tbl,
         )
       )
 
-    # Within each item, order responses by mean pct ascending (longest bar at top).
     resp_order <- dd_mc2 |>
       dplyr::group_by(.data$item_id, .data$response) |>
       dplyr::summarise(mean_pct = mean(.data$pct, na.rm = TRUE),
@@ -187,8 +317,6 @@ plot_besd_bars <- function(sum_tbl,
     mc_items <- unique(dd_mc2$item_id)
 
     if (n_countries <= 1) {
-      # Single country: one combined plot, all items faceted side-by-side.
-      # Response options on y-axis; no grey strip background.
       accent <- .as_palette(palette, 1)[1]
 
       wrapped_levels <- .wrap_lines(levels(dd_mc2$response), width = 25)
@@ -242,8 +370,6 @@ plot_besd_bars <- function(sum_tbl,
       return(list(multichoice = p))
     }
 
-    # Multiple countries: one plot per item.
-    # Each plot: x = country, y = pct, faceted by response option.
     accent <- .as_palette(palette, 1)[1]
 
     make_one_mc <- function(item) {
@@ -322,31 +448,18 @@ plot_besd_bars <- function(sum_tbl,
   if (nrow(dd_mc) > 0) {
     mc_plots <- make_mc_plots()
   }
-  
+
   nm_plots <- list()
   if (nrow(dd_nm) > 0) {
-    
+
     if (n_countries <= 1) {
-      # ---- Single-country: one combined patchwork, domains as inline headers -
-      #
-      # All items live in a single patchwork (ncol = 1).  When domain info is
-      # present, a thin title-only panel is inserted before each domain group.
-      # The key spacing fixes:
-      #   • bar width = 0.88 so the bar fills most of the panel height
-      #   • scale_y_discrete expand = (add = 0.12) removes default 0.6 padding
-      #   • legend.margin top = -6 pt pulls the legend up against the bar
-      #   • plot.margin bottom = 0 for all but the last item, top = 0 for all
-      #     but the first — eliminates the gap between one item's legend and
-      #     the next item's title
-      
       if (!requireNamespace("patchwork", quietly = TRUE)) {
         stop("Package 'patchwork' is required for single-country bar plots. ",
              "Install it with: install.packages('patchwork')", call. = FALSE)
       }
-      
+
       has_domain <- "domain" %in% names(dd_nm) && any(!is.na(dd_nm$domain))
-      
-      # ---- Ordered item table -----------------------------------------------
+
       if (has_domain) {
         item_order_tbl <- dd_nm |>
           dplyr::distinct(.data$item_id, .data$domain, .data$item_lab) |>
@@ -357,7 +470,7 @@ plot_besd_bars <- function(sum_tbl,
           dplyr::mutate(domain = NA_character_) |>
           dplyr::arrange(.data$item_id)
       }
-      
+
       if (sort_bars) {
         topbox_pcts <- dd_nm |>
           dplyr::group_by(.data$item_id) |>
@@ -369,15 +482,12 @@ plot_besd_bars <- function(sum_tbl,
           dplyr::arrange(.data$domain, dplyr::desc(.data$.topbox_pct)) |>
           dplyr::select(-.data$.topbox_pct)
       }
-      
+
       n_items_total <- nrow(item_order_tbl)
-      
-      # ---- Per-item horizontal stacked bar ----------------------------------
-      # Each item gets its own full-range palette so all levels are distinct.
-      # is_first / is_last control top/bottom margin and x-axis visibility.
+
       make_one_single <- function(item, is_first = FALSE, is_last = FALSE) {
         di <- dd_nm |> dplyr::filter(.data$item_id == item)
-        
+
         if ("response_key" %in% names(di) && is.factor(di$response_key)) {
           rk_order        <- levels(droplevels(di$response_key))
           resp_order_item <- unique(sub(".*___", "", rk_order))
@@ -391,17 +501,15 @@ plot_besd_bars <- function(sum_tbl,
           response = factor(as.character(.data$response),
                             levels = resp_order_item)
         )
-        
+
         item_pal <- .as_palette(palette, length(resp_order_item),
                                 levels = resp_order_item)
-        
+
         q_label <- unique(dplyr::coalesce(di$question, di$item_id))[1]
         q_label_wrapped <- .wrap_lines(q_label, width = 30, n_lines = 3)
-        
-        # Use the wrapped label as the single y-axis category so it renders
-        # to the left of the bar rather than above it as a plot title.
+
         di <- di |> dplyr::mutate(.y_lab = q_label_wrapped)
-        
+
         p <- ggplot2::ggplot(
           di,
           ggplot2::aes(x = .data$pct, y = .data$.y_lab, fill = .data$response)
@@ -458,22 +566,19 @@ plot_besd_bars <- function(sum_tbl,
             legend.position    = "right",
             legend.justification = "left",
             legend.key.size    = grid::unit(0.32, "cm"),
-            legend.text        = ggplot2::element_text(size = base_size * 0.75, 
+            legend.text        = ggplot2::element_text(size = base_size * 0.75,
                                                        hjust = 0),
-            # Negative top margin pulls legend up against the bar bottom
             legend.margin      = ggplot2::margin(t = -6, b = 0),
             legend.box.margin  = ggplot2::margin(0, 0, 0, 0),
             panel.grid.major.y = ggplot2::element_blank(),
             panel.grid.major.x = ggplot2::element_line(colour = "grey90",
                                                        linewidth = 0.3),
             panel.grid.minor   = ggplot2::element_blank(),
-            # Uniform top/bottom margins — no title above means no need for
-            # extra top gap on the first item.
             plot.margin        = ggplot2::margin(
               t = 2, r = 12, b = 0, l = 8, unit = "pt"
             )
           )
-        
+
         if (isTRUE(label_pct)) {
           p <- p + ggplot2::geom_text(
             ggplot2::aes(
@@ -488,8 +593,7 @@ plot_besd_bars <- function(sum_tbl,
         }
         p
       }
-      
-      # ---- Domain section header (theme_void spacer) -------------------------
+
       make_domain_header <- function(domain_name) {
         lbl <- if (is.na(domain_name) || domain_name == "NA") "Other" else
           tools::toTitleCase(domain_name)
@@ -511,35 +615,34 @@ plot_besd_bars <- function(sum_tbl,
             plot.margin = ggplot2::margin(t = 10, b = 0, l = 0, unit = "pt")
           )
       }
-      
-      # ---- Interleave headers and item panels --------------------------------
+
       all_plots   <- list()
       all_heights <- numeric(0)
       prev_domain <- NULL
-      header_h    <- 0.50   # taller to accommodate larger text without overlap
-      item_h      <- 0.95   # bar + legend; reduced to keep overall plot compact
-      
+      header_h    <- 0.50
+      item_h      <- 0.95
+
       for (i in seq_len(n_items_total)) {
         cur_dom <- as.character(item_order_tbl$domain[i])
-        
+
         if (has_domain && (is.null(prev_domain) || cur_dom != prev_domain)) {
           all_plots   <- c(all_plots, list(make_domain_header(cur_dom)))
           all_heights <- c(all_heights, header_h)
           prev_domain <- cur_dom
         }
-        
+
         is_first_item <- (i == 1)
         is_last_item  <- (i == n_items_total)
-        
+
         all_plots   <- c(all_plots,
                          list(make_one_single(item_order_tbl$item_id[i],
                                               is_first = is_first_item,
                                               is_last  = is_last_item)))
         all_heights <- c(all_heights, item_h)
       }
-      
-      country_name <- as.character(unique(dd_nm$country))[1]   # ← move up here
-      
+
+      country_name <- as.character(unique(dd_nm$country))[1]
+
       p_combined <- patchwork::wrap_plots(all_plots, ncol = 1,
                                           heights = all_heights) +
         patchwork::plot_annotation(
@@ -554,19 +657,20 @@ plot_besd_bars <- function(sum_tbl,
           )
         )
       nm_plots <- stats::setNames(list(p_combined), country_name)
-      
+
     } else {
-      # ---- Multiple countries: one plot per item (existing behaviour) ----
       nm_items <- unique(dd_nm$item_id)
       nm_plots <- stats::setNames(lapply(nm_items, make_one_nm), nm_items)
     }
   }
-  
+
   if (length(mc_plots) == 0) return(nm_plots)
   if (length(nm_plots) == 0) return(mc_plots)
   c(nm_plots, mc_plots)
 }
 
+
+# ── Spider / radar chart ──────────────────────────────────────────────────────
 
 #' Spider (radar) chart of BeSD top-box scores by country
 #'
@@ -626,24 +730,20 @@ plot_besd_spider <- function(sum_tbl,
                              base_size = 12,
                              wrap_width = 22,
                              ncol = 3,
-                             # Shrink spider + give labels room
                              spider_scale = 0.80,
                              label_padding = 12,
                              outer_padding = 12,
-                             # horizontal-only spacing between facet panels (in "lines")
                              facet_padding = 1.2,
-                             # if TRUE, plot multiple countries on one spider (no facets)
                              overlay = FALSE) {
-  
+
   .assert_besd_summary_tbl(sum_tbl, fn = "plot_besd_spider")
-  
-  # Standard domain colours (kept internally; not an input arg)
+
   domain_colors <- c(
     "thinking and feeling" = "#F4E4B7",
     "social processes"     = "#C8E6C9",
     "practical issues"     = "#BBDEFB"
   )
-  
+
   if (!is.numeric(spider_scale) || length(spider_scale) != 1 || spider_scale <= 0) {
     stopf("spider_scale must be a single positive number (e.g., 0.85).")
   }
@@ -659,38 +759,35 @@ plot_besd_spider <- function(sum_tbl,
   if (!is.logical(overlay) || length(overlay) != 1) {
     stopf("overlay must be TRUE/FALSE.")
   }
-  
-  # Prepare data ---------------------------------------------------------------
+
   tb <- besd_topbox(.coerce_country(sum_tbl), topbox_levels = topbox_levels)
   if (!nrow(tb)) stop("No data for spider plot", call. = FALSE)
   if (!is.null(item_ids)) tb <- tb |> dplyr::filter(.data$item_id %in% item_ids)
-  
+
   tb <- tb |> dplyr::mutate(
     item_lab = paste0(.data$question_short, " (", .data$topbox_label, ")")
   )
-  
-  # Domain presence
+
   has_domain <- "domain" %in% names(tb) && any(!is.na(tb$domain))
-  
+
   if (has_domain) {
     tb <- tb |>
       dplyr::mutate(
         domain = factor(.data$domain,
                         levels = c(
-                          "thinking and feeling", 
-                          "social processes", 
+                          "thinking and feeling",
+                          "social processes",
                           "practical issues"
                         )
         )
       ) |>
       dplyr::arrange(.data$domain, .data$item_id)
   }
-  
-  # Filter countries based on compare argument --------------------------------
+
   countries <- unique(as.character(tb$country))
-  
+
   if (length(compare) == 1 && compare == "all") {
-    
+
     if (!is.null(focal_country) && !overlay) {
       dd <- tb |> dplyr::filter(.data$country == focal_country)
       use_facets <- FALSE
@@ -698,11 +795,11 @@ plot_besd_spider <- function(sum_tbl,
       dd <- tb
       use_facets <- !overlay && length(unique(dd$country)) > 1
     }
-    
+
   } else if (length(compare) == 1 && compare == "mean") {
-    
+
     focal_country <- focal_country %||% countries[1]
-    
+
     dd_mean <- tb |>
       dplyr::filter(.data$country != focal_country) |>
       dplyr::group_by(.data$item_id, .data$item_lab) |>
@@ -712,51 +809,46 @@ plot_besd_spider <- function(sum_tbl,
         .groups = "drop"
       ) |>
       dplyr::mutate(country = "Mean (others)")
-    
+
     dd <- dplyr::bind_rows(
       tb |> dplyr::filter(.data$country == focal_country),
       dd_mean
     )
-    
+
     use_facets <- !overlay
-    
+
   } else {
-    # compare is a vector of countries:
     dd <- tb |> dplyr::filter(.data$country %in% compare)
     use_facets <- !overlay
   }
-  
+
   if (!nrow(dd)) stop("No data after filtering", call. = FALSE)
-  
-  # Choose highlight country (used for overlay title + grey "reference" polygon)
+
   highlight_country <- NULL
   if (!is.null(focal_country) && focal_country %in% unique(as.character(dd$country))) {
     highlight_country <- focal_country
   } else if (overlay && length(compare) > 1 && !all(compare %in% c("all", "mean"))) {
-    # for vector compare in overlay mode, honour the user's order
     highlight_country <- as.character(compare[1])
   } else {
     highlight_country <- unique(as.character(dd$country))[1]
   }
-  # If compare[1] wasn't actually present after filtering, fall back safely
   if (!highlight_country %in% unique(as.character(dd$country))) {
     highlight_country <- unique(as.character(dd$country))[1]
   }
-  
-  # Axis order + wrapped labels (robust even if domain missing) ---------------
+
   axis_tbl <- dd |>
     dplyr::distinct(.data$item_id, .data$item_lab, dplyr::across(dplyr::any_of("domain")))
-  
+
   if (!"domain" %in% names(axis_tbl)) axis_tbl$domain <- NA_character_
   axis_tbl <- axis_tbl |> dplyr::mutate(domain = as.character(.data$domain))
-  
+
   if (has_domain) {
     axis_tbl <- axis_tbl |>
       dplyr::mutate(
         domain = factor(.data$domain,
                         levels = c(
-                          "thinking and feeling", 
-                          "social processes", 
+                          "thinking and feeling",
+                          "social processes",
                           "practical issues"
                         )
         )
@@ -765,26 +857,24 @@ plot_besd_spider <- function(sum_tbl,
   } else {
     axis_tbl <- axis_tbl |> dplyr::arrange(.data$item_id)
   }
-  
+
   axis_tbl <- axis_tbl |>
     dplyr::mutate(item_lab_wrapped = .wrap_lines(.data$item_lab, wrap_width, 3))
-  
+
   axis_levels <- axis_tbl$item_id
   n_items <- length(axis_levels)
   if (n_items < 3) stop("Need at least 3 items for a radar polygon", call. = FALSE)
-  
+
   dd <- dd |>
-    dplyr::left_join(axis_tbl |> dplyr::select(.data$item_id, .data$item_lab_wrapped), 
+    dplyr::left_join(axis_tbl |> dplyr::select(.data$item_id, .data$item_lab_wrapped),
                      by = "item_id") |>
     dplyr::mutate(
       idx = match(.data$item_id, axis_levels),
       theta = 2 * pi * (.data$idx - 1) / n_items
     )
-  
-  # Spider radius scaling ------------------------------------------------------
+
   r_max <- 100 * spider_scale
-  
-  # Convert polar -> Cartesian (start at top, clockwise) -----------------------
+
   dd <- dd |>
     dplyr::mutate(
       r   = (.data$pct / 100) * r_max,
@@ -792,19 +882,17 @@ plot_besd_spider <- function(sum_tbl,
       x   = .data$r * cos(.data$ang),
       y   = .data$r * sin(.data$ang)
     )
-  
-  # Close polygon safely by repeating first point ------------------------------
+
   dd_closed <- dd |>
     dplyr::group_by(.data$country) |>
     dplyr::arrange(.data$idx, .by_group = TRUE) |>
     dplyr::group_modify(~ dplyr::bind_rows(.x, dplyr::slice(.x, 1))) |>
     dplyr::ungroup()
-  
-  # Domain wedges (background) ------------------------------------------------
+
   domain_layers <- list()
   if (has_domain) {
     width <- 2 * pi / n_items
-    
+
     dom_bounds <- dd |>
       dplyr::filter(!is.na(.data$domain)) |>
       dplyr::group_by(.data$domain) |>
@@ -817,12 +905,12 @@ plot_besd_spider <- function(sum_tbl,
         start_theta = 2*pi*(.data$start_idx - 1)/n_items - width/2,
         end_theta   = 2*pi*(.data$end_idx   - 1)/n_items + width/2
       )
-    
+
     for (i in seq_len(nrow(dom_bounds))) {
       st <- dom_bounds$start_theta[i]
       en <- dom_bounds$end_theta[i]
       th <- seq(st, en, length.out = 200)
-      
+
       wedge <- dplyr::bind_rows(
         data.frame(theta = st, r = 0),
         data.frame(theta = th, r = r_max),
@@ -833,11 +921,11 @@ plot_besd_spider <- function(sum_tbl,
           x = .data$r * cos(.data$ang),
           y = .data$r * sin(.data$ang)
         )
-      
+
       dom_name <- as.character(dom_bounds$domain[i])
       col <- domain_colors[[dom_name]]
       if (is.null(col) || is.na(col)) col <- "grey90"
-      
+
       domain_layers[[length(domain_layers) + 1]] <- ggplot2::geom_polygon(
         data = wedge,
         ggplot2::aes(x = .data$x, y = .data$y),
@@ -848,11 +936,10 @@ plot_besd_spider <- function(sum_tbl,
       )
     }
   }
-  
-  # Grid (circles + spokes) ---------------------------------------------------
+
   grid_pct <- c(25, 50, 75, 100)
   grid_r <- (grid_pct / 100) * r_max
-  
+
   grid_circles <- tidyr::expand_grid(
     r = grid_r,
     theta = seq(0, 2*pi, length.out = 361)
@@ -862,7 +949,7 @@ plot_besd_spider <- function(sum_tbl,
       x = .data$r * cos(.data$ang),
       y = .data$r * sin(.data$ang)
     )
-  
+
   spokes <- data.frame(
     idx = seq_len(n_items),
     theta = 2*pi*(seq_len(n_items) - 1)/n_items
@@ -873,40 +960,37 @@ plot_besd_spider <- function(sum_tbl,
       xend = r_max * cos(.data$ang),
       yend = r_max * sin(.data$ang)
     )
-  
-  # Labels around circle ------------------------------------------------------
+
   label_r <- r_max + label_padding
-  
+
   labels_df <- axis_tbl |>
     dplyr::mutate(
       idx   = match(.data$item_id, axis_levels),
       theta = 2*pi*(.data$idx - 1)/n_items,
       ang   = pi/2 - .data$theta,
-      
+
       x = label_r * cos(.data$ang),
       y = label_r * sin(.data$ang),
-      
+
       angle_raw = .data$ang * 180/pi,
       flip      = .data$angle_raw < -90 | .data$angle_raw > 90,
       angle     = ifelse(.data$flip, .data$angle_raw + 180, .data$angle_raw),
-      
+
       is_vertical = abs(abs(.data$angle_raw) - 90) < 6,
       hjust = ifelse(.data$is_vertical, 0.5, ifelse(.data$flip, 1, 0))
     )
-  
-  # Radial tick labels --------------------------------------------------------
+
   radial_labels <- data.frame(r = grid_r, pct = grid_pct) |>
     dplyr::mutate(
       x = 3,
       y = .data$r,
       label = paste0(.data$pct, "%")
     )
-  
-  # Plot modes ----------------------------------------------------------------
+
   c_levels <- unique(as.character(dd$country))
   is_comparison <- !use_facets && length(c_levels) > 1
   is_single <- length(c_levels) == 1
-  
+
   if (is_comparison) {
     dd_title_closed <- dd_closed |> dplyr::filter(.data$country == highlight_country)
     dd_other_closed <- dd_closed |> dplyr::filter(.data$country != highlight_country)
@@ -914,15 +998,13 @@ plot_besd_spider <- function(sum_tbl,
     dd_other_pts <- dd |> dplyr::filter(.data$country != highlight_country)
     pal <- .as_palette(palette, length(unique(dd_other_closed$country)))
   }
-  
+
   p <- ggplot2::ggplot()
-  
-  # Domain background
+
   if (length(domain_layers)) {
     for (layer in domain_layers) p <- p + layer
   }
-  
-  # Grid
+
   p <- p +
     ggplot2::geom_path(
       data = grid_circles,
@@ -943,8 +1025,7 @@ plot_besd_spider <- function(sum_tbl,
       size = base_size * 0.25,
       color = "grey45"
     )
-  
-  # Data layers
+
   if (is_comparison) {
     p <- p +
       ggplot2::geom_polygon(
@@ -957,7 +1038,7 @@ plot_besd_spider <- function(sum_tbl,
         ggplot2::aes(x = .data$x, y = .data$y),
         size = 2.5, color = "#2C3E50"
       )
-    
+
     if (nrow(dd_other_closed) > 0) {
       p <- p +
         ggplot2::geom_polygon(
@@ -975,7 +1056,7 @@ plot_besd_spider <- function(sum_tbl,
         ggplot2::scale_color_manual(values = pal, name = "") +
         ggplot2::scale_fill_manual(values = pal, guide = "none")
     }
-    
+
   } else {
     p <- p +
       ggplot2::geom_polygon(
@@ -988,28 +1069,22 @@ plot_besd_spider <- function(sum_tbl,
         ggplot2::aes(x = .data$x, y = .data$y),
         size = 2.5, color = "#2C3E50"
       )
-    
+
     if (use_facets) p <- p + ggplot2::facet_wrap(~ country, ncol = ncol)
   }
-  
-  # Item labels
+
   p <- p +
     ggplot2::geom_text(
       data = labels_df,
-      ggplot2::aes(x = .data$x, y = .data$y, label = .data$item_lab_wrapped, 
+      ggplot2::aes(x = .data$x, y = .data$y, label = .data$item_lab_wrapped,
                    hjust = .data$hjust),
       inherit.aes = FALSE,
       size = base_size * 0.25,
       color = "grey20"
     )
-  
-  # Finalize ------------------------------------------------------------------
+
   lim <- label_r + outer_padding
-  
-  # Title rules:
-  # - single country -> that country
-  # - overlay comparison -> highlight country (automatic; no extra arg)
-  # - facets/multi -> no title
+
   plot_title <- if (is_single) {
     as.character(c_levels[1])
   } else if (overlay && is_comparison) {
@@ -1017,13 +1092,12 @@ plot_besd_spider <- function(sum_tbl,
   } else {
     NULL
   }
-  
-  # Horizontal-only facet spacing:
+
   spacing_theme <- ggplot2::theme()
   if (use_facets) {
     default_y <- ggplot2::theme_get()$panel.spacing
     if (is.null(default_y)) default_y <- grid::unit(0.5, "lines")
-    
+
     spacing_theme <- tryCatch(
       ggplot2::theme(
         panel.spacing.x = grid::unit(facet_padding, "lines"),
@@ -1034,7 +1108,7 @@ plot_besd_spider <- function(sum_tbl,
       }
     )
   }
-  
+
   p +
     ggplot2::coord_equal(
       xlim = c(-lim, lim),
@@ -1050,12 +1124,12 @@ plot_besd_spider <- function(sum_tbl,
       axis.title = ggplot2::element_blank(),
       axis.ticks = ggplot2::element_blank(),
       panel.grid = ggplot2::element_blank(),
-      
+
       strip.background = ggplot2::element_rect(fill = NA, color = NA),
       strip.text = ggplot2::element_text(face = "bold", size = base_size),
       legend.position =
         if (is_comparison && exists("dd_other_closed") && nrow(dd_other_closed) > 0) {
-          "bottom" 
+          "bottom"
         } else {
           "none"
         },
@@ -1070,6 +1144,8 @@ plot_besd_spider <- function(sum_tbl,
     )
 }
 
+
+# ── Top-box computation ───────────────────────────────────────────────────────
 
 #' Heuristic identification of top-box response levels
 #'
@@ -1098,7 +1174,7 @@ besd_guess_topbox_levels <- function(responses) {
 #' Compute top-box percentages from a BeSD summary tibble
 #'
 #' Collapses a full response-distribution summary into a single top-box
-#' percentage per country × item, respecting the \code{reverse} flag in the
+#' percentage per country x item, respecting the \code{reverse} flag in the
 #' item dictionary (reversed items use the most negative response as the
 #' "positive" indicator).  Wilson-score 95\% confidence intervals are appended.
 #'
@@ -1110,7 +1186,7 @@ besd_guess_topbox_levels <- function(responses) {
 #'   computing top-box scores.  Multichoice items are always excluded.
 #'   Default \code{c("binary", "ordinal", "categorical", "unknown")}.
 #'
-#' @return A tibble with one row per country × item containing columns
+#' @return A tibble with one row per country x item containing columns
 #'   \code{country}, \code{item_id}, \code{pct} (top-box \%), \code{lcl},
 #'   \code{ucl} (95\% CI bounds), \code{topbox_label}, \code{question_short},
 #'   and domain metadata.
@@ -1129,44 +1205,37 @@ besd_topbox <- function(sum_tbl,
                                                "categorical", "unknown")) {
   .assert_besd_summary_tbl(sum_tbl, fn = "besd_topbox")
   sum_tbl <- .coerce_country(sum_tbl)
-  
-  # Get dictionary to check for reverse flag
+
   besd_dict <- attr(sum_tbl, "besd_dict")
   dem_dict  <- attr(sum_tbl, "dem_dict")
-  
+
   dict <- dplyr::bind_rows(
-    if (is.null(besd_dict)) tibble::tibble() 
+    if (is.null(besd_dict)) tibble::tibble()
     else tibble::as_tibble(besd_dict),
-    if (is.null(dem_dict)) tibble::tibble() 
+    if (is.null(dem_dict)) tibble::tibble()
     else tibble::as_tibble(dem_dict)
   )
-  
+
   dd <- sum_tbl
   if (!is.null(include_item_types)) {
     dd <- dd |> dplyr::filter(.data$item_type %in% include_item_types)
   }
   dd <- dd |> dplyr::filter(.data$item_type != "multichoice")
-  
+
   item_levels <- dd |>
     dplyr::group_by(.data$item_id) |>
     dplyr::summarise(.levels = list(unique(.data$response)), .groups = "drop")
-  
-  # CRITICAL: Respect reverse flag when picking top-box
+
   pick_levels <- function(item_id, levs) {
-    # User override takes precedence
     if (!is.null(topbox_levels) && item_id %in% names(topbox_levels)) {
       return(topbox_levels[[item_id]])
     }
-    
-    # Check if this item has reverse = TRUE in dictionary
+
     if (nrow(dict) > 0 && item_id %in% dict$item_id) {
       item_dict <- dict[dict$item_id == item_id, ]
       is_reversed <- isTRUE(item_dict$reverse[1])
-      
+
       if (is_reversed) {
-        # For reversed items, pick the FIRST level (not last)
-        # This is typically "No" for binary items where we want to 
-        # measure lack of barriers
         if (is.factor(levs)) {
           return(head(levels(levs), 1))
         } else {
@@ -1174,22 +1243,21 @@ besd_topbox <- function(sum_tbl,
         }
       }
     }
-    
-    # Default behavior: pick top-box normally
+
     besd_guess_topbox_levels(levs)
   }
-  
-  item_levels$topbox <- mapply(pick_levels, item_levels$item_id, 
+
+  item_levels$topbox <- mapply(pick_levels, item_levels$item_id,
                                item_levels$.levels,
                                SIMPLIFY = FALSE, USE.NAMES = FALSE)
-  
+
   dd2 <- dd |>
-    dplyr::left_join(item_levels |> dplyr::select(.data$item_id, 
-                                                  .data$topbox), 
+    dplyr::left_join(item_levels |> dplyr::select(.data$item_id,
+                                                  .data$topbox),
                      by = "item_id") |>
     dplyr::mutate(is_topbox = purrr::map2_lgl(.data$response, .data$topbox,
                                               ~ .x %in% .y))
-  
+
   out <- dd2 |>
     dplyr::group_by(.data$country, .data$item_id) |>
     dplyr::summarise(
@@ -1197,13 +1265,13 @@ besd_topbox <- function(sum_tbl,
       question_short = dplyr::first(.data$question_short),
       question = dplyr::first(if ("question" %in% names(dd2)) .data$question
                               else .data$question_short),
-      domain = dplyr::first(if ("domain" %in% names(dd2)) .data$domain 
+      domain = dplyr::first(if ("domain" %in% names(dd2)) .data$domain
                             else NA_character_),
       topbox_label = paste(unique(unlist(.data$topbox)), collapse = ", "),
       pct = sum(.data$pct[.data$is_topbox], na.rm = TRUE),
-      sum_w = dplyr::first(if ("sum_w" %in% names(dd2)) .data$sum_w 
+      sum_w = dplyr::first(if ("sum_w" %in% names(dd2)) .data$sum_w
                            else NA_real_),
-      n_eff = dplyr::first(if ("n_eff" %in% names(dd2)) .data$n_eff 
+      n_eff = dplyr::first(if ("n_eff" %in% names(dd2)) .data$n_eff
                            else NA_real_),
       n = dplyr::first(if ("n" %in% names(dd2)) .data$n else NA_real_),
       .groups = "drop"
@@ -1217,6 +1285,247 @@ besd_topbox <- function(sum_tbl,
       ucl = pmin(100, (.data$p + z * .data$se) * 100)
     ) |>
     dplyr::select(-p, -n_denom, -se, -z)
-  
+
   out
+}
+
+
+# ── Ranked lollipop chart ─────────────────────────────────────────────────────
+
+#' Ranked lollipop chart — all countries for one BeSD item or domain
+#'
+#' Produces a horizontal lollipop chart with all countries ranked by
+#' top-box percentage for a single item or domain average.  An optional
+#' reference line marks the global mean, and a focal country can be
+#' highlighted in a contrasting colour.
+#'
+#' @param besd_sum A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param item_id  A single item ID string (must match \code{besd_sum$item_id}).
+#'   Mutually exclusive with \code{domain}.
+#' @param domain   A domain string (e.g. \code{"thinking and feeling"}).
+#'   When supplied, countries are ranked by their mean top-box \% across all
+#'   items in that domain.  Mutually exclusive with \code{item_id}.
+#' @param highlight_country Optional character string; name of a country to
+#'   highlight with a red dot and stem.
+#' @param show_ci  Logical; if \code{TRUE} (default), horizontal 95\% CI error
+#'   bars are drawn when \code{lcl}/\code{ucl} columns are present.
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "country")
+#' s <- summary(x)
+#' plot_besd_ranked(s, item_id = "tf_benefits")
+#' plot_besd_ranked(s, domain = "thinking and feeling",
+#'                  highlight_country = "Brazil")
+#'
+#' @export
+plot_besd_ranked <- function(besd_sum,
+                              item_id           = NULL,
+                              domain            = NULL,
+                              highlight_country = NULL,
+                              show_ci           = TRUE,
+                              base_size         = 12) {
+
+  if (is.null(item_id) && is.null(domain)) {
+    stop("Provide either item_id or domain.", call. = FALSE)
+  }
+  if (!is.null(item_id) && !is.null(domain)) {
+    stop("Provide only one of item_id or domain, not both.", call. = FALSE)
+  }
+
+  tb <- besd_topbox(.coerce_country(besd_sum))
+
+  if (!is.null(item_id)) {
+    dd <- tb |> dplyr::filter(.data$item_id == !!item_id)
+    if (!nrow(dd)) stop("item_id '", item_id, "' not found in top-box output.",
+                         call. = FALSE)
+    plot_title <- unique(dplyr::coalesce(dd$question_short, dd$item_id))[1]
+
+  } else {
+    dd <- tb |>
+      dplyr::filter(!is.na(.data$domain) &
+                      tolower(.data$domain) == tolower(domain)) |>
+      dplyr::group_by(.data$country) |>
+      dplyr::summarise(
+        pct  = mean(.data$pct, na.rm = TRUE),
+        lcl  = mean(.data$lcl, na.rm = TRUE),
+        ucl  = mean(.data$ucl, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(item_id = domain, question_short = domain)
+    plot_title <- tools::toTitleCase(domain)
+  }
+
+  dd <- dd |>
+    dplyr::arrange(.data$pct) |>
+    dplyr::mutate(
+      country      = factor(as.character(.data$country),
+                            levels = as.character(.data$country)),
+      is_highlight = !is.null(highlight_country) &
+                      as.character(.data$country) == highlight_country,
+      dot_colour   = dplyr::if_else(.data$is_highlight, "#E74C3C", "#2C3E50"),
+      dot_size     = dplyr::if_else(.data$is_highlight, 4.5, 3)
+    )
+
+  global_mean <- mean(dd$pct, na.rm = TRUE)
+
+  p <- ggplot2::ggplot(dd,
+    ggplot2::aes(x = .data$pct, y = .data$country)) +
+    ggplot2::geom_segment(
+      ggplot2::aes(x = 0, xend = .data$pct,
+                   y = .data$country, yend = .data$country,
+                   colour = .data$dot_colour),
+      linewidth = 0.7
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(colour = .data$dot_colour, size = .data$dot_size)
+    ) +
+    ggplot2::scale_colour_identity() +
+    ggplot2::scale_size_identity() +
+    ggplot2::geom_vline(xintercept = global_mean,
+                        linetype = "dashed",
+                        colour = "grey55",
+                        linewidth = 0.5) +
+    ggplot2::annotate("text",
+                      x = global_mean + 1, y = 0.7,
+                      label = sprintf("Mean: %.0f%%", global_mean),
+                      hjust = 0, size = base_size * 0.28,
+                      colour = "grey45") +
+    ggplot2::scale_x_continuous(
+      limits = c(0, 100),
+      labels = function(x) paste0(x, "%"),
+      name   = "Top-box %",
+      expand = ggplot2::expansion(mult = c(0, 0.05))
+    ) +
+    ggplot2::labs(y = NULL, title = plot_title) +
+    besd_theme(base_size) +
+    ggplot2::theme(
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_line(colour = "grey90",
+                                                  linewidth = 0.3),
+      panel.grid.minor   = ggplot2::element_blank(),
+      legend.position    = "none"
+    )
+
+  if (isTRUE(show_ci) && all(c("lcl", "ucl") %in% names(dd))) {
+    p <- p + ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = .data$lcl, xmax = .data$ucl),
+      height    = 0.35,
+      colour    = "grey65",
+      linewidth = 0.45
+    )
+  }
+
+  p
+}
+
+
+# ── Demographics table ────────────────────────────────────────────────────────
+
+#' Heatmap table of demographic composition for one country
+#'
+#' Renders a tile-based heatmap showing response counts and percentages for
+#' each demographic variable for a single country.  Cells are optionally
+#' shaded by percentage to aid visual scanning.
+#'
+#' @param dem_tbl A demographic summary tibble, as returned by
+#'   \code{besd_summary_demographics()}.  Must contain columns
+#'   \code{country}, \code{item_id}, \code{response}, \code{n}, and
+#'   \code{pct}.
+#' @param country Character string; the country to display.
+#' @param max_levels Integer; maximum number of response levels to show per
+#'   demographic variable.  Additional levels are dropped.  Default \code{12}.
+#' @param sort_by_pct Logical; if \code{TRUE} (default), levels within each
+#'   variable are ordered by descending percentage.  If \code{FALSE}, ordered
+#'   alphabetically by response label.
+#' @param fill_by One of \code{"pct"} (default) or \code{"none"}.  When
+#'   \code{"pct"}, tiles are filled with a white-to-teal gradient proportional
+#'   to the cell percentage.  When \code{"none"}, tiles are uniform grey.
+#' @param fill_high Character; hex colour for the high end of the fill
+#'   gradient.  Default \code{"#4F8D9A"} (teal).
+#' @param base_size Numeric; base font size (points) passed to
+#'   \code{besd_theme()}. Default \code{12}.
+#' @param wrap_width Integer; maximum character width for wrapping item ID
+#'   labels on the x-axis.  Default \code{30}.
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x   <- as_besd(data_demo, country_col = "country", dem_dict = dem_dictionary())
+#' s   <- summary(x)
+#' dem <- besd_summary_demographics(s)
+#' plot_besd_demographics_table(dem, country = "Brazil")
+#'
+#' @export
+plot_besd_demographics_table <- function(dem_tbl,
+                                         country,
+                                         max_levels = 12,
+                                         sort_by_pct = TRUE,
+                                         fill_by = c("pct", "none"),
+                                         fill_high = "#4F8D9A",
+                                         base_size = 12,
+                                         wrap_width = 30) {
+  fill_by <- match.arg(fill_by)
+  .assert_has_cols(dem_tbl, c("country", "item_id", "response", "n", "pct"),
+                   context = "plot_besd_demographics_table")
+
+  dd <- dem_tbl |> dplyr::filter(as.character(.data$country) == country)
+  if (!nrow(dd)) stop("No rows found for country: ", country,
+                      call. = FALSE)
+
+  dd <- dd |>
+    dplyr::mutate(
+      item_lab = .wrap_lines(.data$item_id, width = wrap_width,
+                             n_lines = 2),
+      response = as.character(.data$response),
+      cell = paste0(.data$n, " (", sprintf("%.0f%%", .data$pct), ")")
+    )
+
+  dd <- dd |>
+    dplyr::group_by(.data$item_id) |>
+    dplyr::arrange(if (isTRUE(sort_by_pct)) dplyr::desc(.data$pct)
+                   else .data$response, .by_group = TRUE) |>
+    dplyr::mutate(rank = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::filter(.data$rank <= max_levels) |>
+    dplyr::select(-.data$rank)
+
+  dd <- dd |>
+    dplyr::mutate(
+      item_lab = factor(.data$item_lab, levels = unique(.data$item_lab)),
+      response = factor(.data$response, levels = rev(unique(.data$response)))
+    )
+
+  p <- ggplot2::ggplot(dd, ggplot2::aes(x = .data$item_lab,
+                                        y = .data$response))
+
+  if (fill_by == "pct") {
+    p <- p +
+      ggplot2::geom_tile(ggplot2::aes(fill = .data$pct),
+                         colour = "white", linewidth = 0.3) +
+      ggplot2::scale_fill_gradient(low = "white", high = fill_high,
+                                   name = "%")
+  } else {
+    p <- p + ggplot2::geom_tile(fill = "grey95", colour = "white",
+                                linewidth = 0.3)
+  }
+
+  p +
+    ggplot2::geom_text(ggplot2::aes(label = .data$cell),
+                       size = base_size * 0.25) +
+    ggplot2::labs(
+      x = NULL, y = NULL,
+      title = paste0("Demographic profile: ", country),
+      subtitle = "Cells show n (percent)"
+    ) +
+    besd_theme(base_size) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1),
+      panel.grid = ggplot2::element_blank()
+    )
 }

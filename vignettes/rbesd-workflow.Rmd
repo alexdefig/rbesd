@@ -263,12 +263,6 @@ plot_besd_bars(
 )
 ```
 
-### Multichoice items
-
-```{r, fig.width=7, fig.height=4}
-plot_besd_multichoice_bars(smry, item_ids = "pr_reasons_ease_access")
-```
-
 ### Top-box summary
 
 ```{r}
