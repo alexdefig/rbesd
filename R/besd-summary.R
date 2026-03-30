@@ -488,3 +488,148 @@ besd_summary_by <- function(object, by_col, ...) {
 }
 
 
+# ── Top-box computation ───────────────────────────────────────────────────────
+
+#' Heuristic identification of top-box response levels
+#'
+#' Applies a sequence of regular expressions to a vector of response labels to
+#' identify the most positive (top-box) response(s).  Used internally by
+#' \code{besd_topbox()} but also available for direct use or testing.
+#'
+#' @param responses A character or factor vector of response option labels.
+#'
+#' @return A character vector containing the top-box response label(s): the
+#'   last level for ordered or unordered factors, or the last unique value for
+#'   plain character vectors.
+#'
+#' @examples
+#' besd_guess_topbox_levels(c("No", "Unsure", "Yes"))
+#' besd_guess_topbox_levels(c("Disagree", "Neutral", "Agree", "Strongly agree"))
+#'
+#' @export
+besd_guess_topbox_levels <- function(responses) {
+  if (!length(responses)) return(character())
+  if (is.factor(responses)) return(tail(levels(responses), 1))
+  tail(unique(as.character(responses)), 1)
+}
+
+
+#' Compute top-box percentages from a BeSD summary tibble
+#'
+#' Collapses a full response-distribution summary into a single top-box
+#' percentage per country x item, respecting the \code{reverse} flag in the
+#' item dictionary (reversed items use the most negative response as the
+#' "positive" indicator).  Wilson-score 95\% confidence intervals are appended.
+#'
+#' @param sum_tbl A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param topbox_levels Optional named list mapping item IDs to character
+#'   vectors of response labels that should be counted as top-box.  Overrides
+#'   automatic detection for the named items.
+#' @param include_item_types Character vector of item types to retain before
+#'   computing top-box scores.  Multichoice items are always excluded.
+#'   Default \code{c("binary", "ordinal", "categorical", "unknown")}.
+#'
+#' @return A tibble with one row per country x item containing columns
+#'   \code{country}, \code{item_id}, \code{pct} (top-box \%), \code{lcl},
+#'   \code{ucl} (95\% CI bounds), \code{topbox_label}, \code{question_short},
+#'   and domain metadata.
+#'
+#' @examples
+#' data("data_demo", package = "rbesd")
+#' x <- as_besd(data_demo, country_col = "country")
+#' s <- summary(x)
+#' tb <- besd_topbox(s)
+#' tb
+#'
+#' @export
+besd_topbox <- function(sum_tbl,
+                        topbox_levels = NULL,
+                        include_item_types = c("binary", "ordinal",
+                                               "categorical", "unknown")) {
+  .assert_besd_summary_tbl(sum_tbl, fn = "besd_topbox")
+  sum_tbl <- .coerce_country(sum_tbl)
+
+  besd_dict <- attr(sum_tbl, "besd_dict")
+  dem_dict  <- attr(sum_tbl, "dem_dict")
+
+  dict <- dplyr::bind_rows(
+    if (is.null(besd_dict)) tibble::tibble()
+    else tibble::as_tibble(besd_dict),
+    if (is.null(dem_dict)) tibble::tibble()
+    else tibble::as_tibble(dem_dict)
+  )
+
+  dd <- sum_tbl
+  if (!is.null(include_item_types)) {
+    dd <- dd |> dplyr::filter(.data$item_type %in% include_item_types)
+  }
+  dd <- dd |> dplyr::filter(.data$item_type != "multichoice")
+
+  item_levels <- dd |>
+    dplyr::group_by(.data$item_id) |>
+    dplyr::summarise(.levels = list(unique(.data$response)), .groups = "drop")
+
+  pick_levels <- function(item_id, levs) {
+    if (!is.null(topbox_levels) && item_id %in% names(topbox_levels)) {
+      return(topbox_levels[[item_id]])
+    }
+
+    if (nrow(dict) > 0 && item_id %in% dict$item_id) {
+      item_dict <- dict[dict$item_id == item_id, ]
+      is_reversed <- isTRUE(item_dict$reverse[1])
+
+      if (is_reversed) {
+        if (is.factor(levs)) {
+          return(head(levels(levs), 1))
+        } else {
+          return(head(as.character(levs), 1))
+        }
+      }
+    }
+
+    besd_guess_topbox_levels(levs)
+  }
+
+  item_levels$topbox <- mapply(pick_levels, item_levels$item_id,
+                               item_levels$.levels,
+                               SIMPLIFY = FALSE, USE.NAMES = FALSE)
+
+  dd2 <- dd |>
+    dplyr::left_join(item_levels |> dplyr::select(.data$item_id,
+                                                  .data$topbox),
+                     by = "item_id") |>
+    dplyr::mutate(is_topbox = purrr::map2_lgl(.data$response, .data$topbox,
+                                              ~ .x %in% .y))
+
+  out <- dd2 |>
+    dplyr::group_by(.data$country, .data$item_id) |>
+    dplyr::summarise(
+      item_type = dplyr::first(.data$item_type),
+      question_short = dplyr::first(.data$question_short),
+      question = dplyr::first(if ("question" %in% names(dd2)) .data$question
+                              else .data$question_short),
+      domain = dplyr::first(if ("domain" %in% names(dd2)) .data$domain
+                            else NA_character_),
+      topbox_label = paste(unique(unlist(.data$topbox)), collapse = ", "),
+      pct = sum(.data$pct[.data$is_topbox], na.rm = TRUE),
+      sum_w = dplyr::first(if ("sum_w" %in% names(dd2)) .data$sum_w
+                           else NA_real_),
+      n_eff = dplyr::first(if ("n_eff" %in% names(dd2)) .data$n_eff
+                           else NA_real_),
+      n = dplyr::first(if ("n" %in% names(dd2)) .data$n else NA_real_),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      p = .data$pct / 100,
+      n_denom = dplyr::coalesce(.data$n_eff, .data$n),
+      se = sqrt(pmax(.data$p * (1 - .data$p), 0) / pmax(.data$n_denom, 1)),
+      z = stats::qnorm(0.975),
+      lcl = pmax(0, (.data$p - z * .data$se) * 100),
+      ucl = pmin(100, (.data$p + z * .data$se) * 100)
+    ) |>
+    dplyr::select(-p, -n_denom, -se, -z)
+
+  out
+}
+
+
