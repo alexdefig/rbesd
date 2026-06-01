@@ -12,7 +12,7 @@
 #'   \item \strong{demo_sum} (required) — sample composition by demographic group,
 #'     computed via \code{besd_summary_demographics()}.
 #'   \item \strong{topbox_all} (required) — top-box scores used by the map and
-#'     ranked-items view, computed via \code{besd_topbox()}.
+#'     ranked-items view, computed via \code{summary(x, combine_top = TRUE)}.
 #'   \item \strong{breakdown_sum} (optional) — response distributions broken down
 #'     by each demographic variable, computed via \code{besd_summary_by()}.
 #'     This powers the \emph{BeSD by Demographic} tab. It is skipped
@@ -82,7 +82,11 @@ prepare_explorer_data <- function(
 
   # ── Step 3: topbox_all (required) ───────────────────────────────────────────
   message("Step 3/4: Computing top-box scores (topbox_all) ...")
-  topbox_all <- besd_topbox(besd_sum)
+  topbox_all <- summary(besd_data,
+                        conf_level             = conf_level,
+                        exclude_missing_tokens = exclude_missing,
+                        include_demographics   = FALSE,
+                        combine_top            = TRUE)
   .save_rds(topbox_all, "topbox_all.rds")
 
   # ── Step 4: breakdown_sum (optional) ────────────────────────────────────────

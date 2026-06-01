@@ -17,6 +17,7 @@ besd_dictionary <- function() {
       item_type = "ordinal",
       levels = c("Not at all important", "A little important", "Moderately important", 
                  "Very important"),
+      toplevs = c("Moderately important", "Very important"),
       reverse = FALSE,
       question = "How important do you think vaccines are for your child's health?",
       question_short = "Confidence in vaccine benefits"
@@ -25,6 +26,7 @@ besd_dictionary <- function() {
       domain = "thinking and feeling",
       item_type = "ordinal",
       levels = c("Not at all safe", "A little safe", "Moderately safe", "Very safe"),
+      toplevs = c("Moderately safe", "Very safe"),
       reverse = FALSE,
       question = "How safe do you think vaccines are for your child?",
       question_short = "Confidence in vaccine safety"
@@ -33,6 +35,7 @@ besd_dictionary <- function() {
       domain = "thinking and feeling",
       item_type = "ordinal",
       levels = c("Not at all", "A little", "Moderately", "Very much"),
+      toplevs = c("Moderately", "Very much"),
       reverse = FALSE,
       question = "How much do you trust the health workers who give children vaccines?",
       question_short = "Confidence in health workers"
@@ -42,6 +45,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = "Do you think most parents you know get their children vaccinated?",
       question_short = "Peer norms"
@@ -50,6 +54,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = paste0(
         "Do you think most of your close family and friends want ", 
@@ -61,6 +66,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = paste0(
         "Do you think your religious leaders want you to get your child vaccinated?"
@@ -71,6 +77,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = paste0(
         "Do you think your community leaders want you to get your child vaccinated?"
@@ -81,6 +88,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = "Has a health worker recommended your child be vaccinated?",
       question_short = "Health worker recommendation"
@@ -89,6 +97,7 @@ besd_dictionary <- function() {
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("No"),
       reverse = TRUE,
       question = "Would the mother need permission to take your child to the clinic?",
       question_short = "Mother's travel autonomy"
@@ -98,6 +107,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = paste0(
         "Have you ever been contacted about your child being due for vaccination?"
@@ -108,6 +118,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = "Do you know where to go to get your child vaccinated?",
       question_short = "Know where to go to get vaccination"
@@ -116,6 +127,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("Yes"),
       reverse = FALSE,
       question = "Have you personally ever taken your youngest child to get vaccinated?",
       question_short = "Took child for vaccination"
@@ -124,6 +136,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "binary",
       levels = c("No", "Yes"),
+      toplevs = c("No"),
       reverse = TRUE,
       question = paste0(
         "Have you ever been turned away when you tried to get your child vaccinated?"
@@ -134,6 +147,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "ordinal",
       levels = c("Not at all easy", "A little easy", "Moderately easy", "Very easy"),
+      toplevs = c("Moderately easy", "Very easy"),
       reverse = FALSE,
       question = "How easy is it to get vaccination services for your child?",
       question_short = "Ease of access"
@@ -142,6 +156,7 @@ besd_dictionary <- function() {
       domain = "practical issues",
       item_type = "ordinal",
       levels = c("Not at all easy", "A little easy", "Moderately easy", "Very easy"),
+      toplevs = c("Moderately easy", "Very easy"),
       reverse = FALSE,
       question = paste0(
         "How easy is it to pay for vaccination? (payments, cost of travel, ", 
@@ -158,6 +173,7 @@ besd_dictionary <- function() {
         "Moderately satisfied", 
         "Very satisfied"
       ),
+      toplevs = c("Moderately satisfied", "Very satisfied"),
       reverse = FALSE,
       question = "How satisfied are you with the vaccination services?",
       question_short = "Service satisfaction"
@@ -181,6 +197,7 @@ besd_dictionary <- function() {
         "The clinic only had health workers of the opposite sex",
         "Is there something else?"
       ),
+      toplevs = NULL,
       reverse = NA,
       question = "What makes it hard to get vaccination services for your child?",
       question_short = "Reasons for low ease of access"
@@ -199,6 +216,7 @@ besd_dictionary <- function() {
         "Staff do not spend enough time with people",
         "Is there something else?"
       ),
+      toplevs = NULL,
       reverse = NA,
       question = "What is not satisfactory about the vaccination services?",
       question_short = "Service quality"
@@ -221,6 +239,7 @@ dem_dictionary <- function() {
       domain = "predictor",
       item_type = "categorical",
       levels = c("Man", "Woman", "Nonbinary", "Other"),
+      toplevs = NA,
       reverse = NA,
       question = "What is your gender?",
       question_short = "Gender"
@@ -229,12 +248,13 @@ dem_dictionary <- function() {
       domain = "predictor",
       item_type = "categorical",
       levels = c(
-        "18-24 years old", 
-        "25-34 years old", 
-        "35-44 years old", 
-        "45-54 years old", 
+        "18-24 years old",
+        "25-34 years old",
+        "35-44 years old",
+        "45-54 years old",
         "55+ years"
       ),
+      toplevs = NA,
       reverse = NA,
       question = "How old are you?",
       question_short = "Age"
@@ -360,7 +380,8 @@ modify_dictionary <- function(df = NULL,
 # Return the required dictionary column names in the correct order. When
 # `with_id = TRUE`, prepends "item_id" for contexts that need the full schema.
 .dictionary_cols <- function(with_id = FALSE) {
-  cols <- c("domain", "item_type", "levels", "reverse", "question", "question_short")
+  cols <- c("domain", "item_type", "levels", "toplevs", "reverse",
+            "question", "question_short")
   if (isTRUE(with_id)) cols <- c("item_id", cols)
   cols
 }
@@ -398,21 +419,40 @@ modify_dictionary <- function(df = NULL,
     if (!is.character(x$levels)) {
       .stopf("`levels` must be a character vector for `%s`.", item_id)
     }
+    if (!(is.null(x$toplevs) ||
+          is.character(x$toplevs) ||
+          (is.logical(x$toplevs) && all(is.na(x$toplevs))))) {
+      .stopf("`toplevs` must be NULL, a character vector, or NA for `%s`.", item_id)
+    }
+    if (is.character(x$toplevs)) {
+      bad_tl <- setdiff(x$toplevs, as.character(x$levels))
+      if (length(bad_tl)) {
+        .stopf("`toplevs` for `%s` contains value(s) not in `levels`: %s",
+               item_id, paste(bad_tl, collapse = ", "))
+      }
+    }
     if (!(is.logical(x$reverse) && length(x$reverse) == 1) && !is.na(x$reverse)) {
       .stopf("`reverse` must be TRUE/FALSE/NA for `%s`.", item_id)
-    } 
+    }
     if (!is.character(x$question) || length(x$question) != 1) {
       .stopf("`question` must be length-1 character for `%s`.", item_id)
     }
     if (!is.character(x$question_short) || length(x$question_short) != 1) {
       .stopf("`question_short` must be length-1 character for `%s`.", item_id)
     }
-    
+
+    toplevs_stored <- if (is.character(x$toplevs)) {
+      list(as.character(x$toplevs))
+    } else {
+      list(NA_character_)
+    }
+
     tibble::tibble(
       item_id        = item_id,
       domain         = x$domain,
       item_type      = x$item_type,
       levels         = list(as.character(x$levels)),
+      toplevs        = toplevs_stored,
       reverse        = x$reverse,
       question       = x$question,
       question_short = x$question_short
@@ -504,10 +544,32 @@ modify_dictionary <- function(df = NULL,
     }, logical(1))
     if (any(bad_levels)) {
       probs <- c(
-        probs, 
+        probs,
         sprintf(
           "`levels` must contain non-empty character vectors; bad row(s): %s",
           .pastec(which(bad_levels))
+        )
+      )
+    }
+  }
+
+  # toplevs: list-column of NA or character vectors that are subsets of levels
+  if (!is.list(dict$toplevs) || length(dict$toplevs) != n) {
+    probs <- c(probs, "`toplevs` must be a list-column with length nrow(dict).")
+  } else if (is.list(dict$levels)) {
+    bad_tl <- vapply(seq_len(n), function(i) {
+      tl <- dict$toplevs[[i]]
+      if (is.null(tl) || (length(tl) == 1 && is.na(tl[[1]]))) return(FALSE)
+      if (!is.character(tl) || anyNA(tl) || any(tl == "")) return(TRUE)
+      lv <- dict$levels[[i]]
+      length(setdiff(tl, as.character(lv))) > 0
+    }, logical(1))
+    if (any(bad_tl)) {
+      probs <- c(
+        probs,
+        sprintf(
+          "`toplevs` must be NA or a character subset of `levels`; bad row(s): %s",
+          .pastec(which(bad_tl))
         )
       )
     }

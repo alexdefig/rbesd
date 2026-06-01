@@ -31,9 +31,9 @@ Imports:
     scales (>= 1.3.0),
     patchwork (>= 1.2.0),
     lme4,
-    ordinal
+    ordinal,
+    survey
 Suggests:
-    survey,
     brms,
     knitr,
     rmarkdown,

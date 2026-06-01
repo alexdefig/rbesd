@@ -679,15 +679,14 @@ plot_besd_bars <- function(sum_tbl,
 #' on one spider) display modes.  Domain background wedges are drawn when
 #' domain metadata is present.
 #'
-#' @param sum_tbl A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param sum_tbl A top-box \code{besd_summary_tbl} produced by
+#'   \code{summary(x, combine_top = TRUE)}.
 #' @param compare Character vector of country names to include, or one of the
 #'   special values \code{"all"} (default; plots all countries) or
 #'   \code{"mean"} (plots \code{focal_country} against the mean of all others).
 #' @param focal_country Optional character string; a country to highlight.  In
 #'   facet mode only this country is shown; in overlay mode it is rendered in
 #'   dark with other countries coloured.
-#' @param topbox_levels Optional named list passed to \code{besd_topbox()} to
-#'   override automatic top-box response detection per item.
 #' @param item_ids Optional character vector; restricts the chart to the
 #'   specified item IDs.
 #' @param palette Optional colour palette for comparison countries.  If
@@ -714,17 +713,16 @@ plot_besd_bars <- function(sum_tbl,
 #' @examples
 #' data("data_demo", package = "rbesd")
 #' x <- as_besd(data_demo, country_col = "country")
-#' s <- summary(x)
+#' s_tb <- summary(x, combine_top = TRUE)
 #' # Single country
-#' plot_besd_spider(s, focal_country = "Brazil")
+#' plot_besd_spider(s_tb, focal_country = "Brazil")
 #' # Overlay comparison
-#' plot_besd_spider(s, compare = c("Brazil", "Canada"), overlay = TRUE)
+#' plot_besd_spider(s_tb, compare = c("Brazil", "Canada"), overlay = TRUE)
 #'
 #' @export
 plot_besd_spider <- function(sum_tbl,
                              compare = "all",
                              focal_country = NULL,
-                             topbox_levels = NULL,
                              item_ids = NULL,
                              palette = NULL,
                              base_size = 12,
@@ -760,12 +758,12 @@ plot_besd_spider <- function(sum_tbl,
     stopf("overlay must be TRUE/FALSE.")
   }
 
-  tb <- besd_topbox(.coerce_country(sum_tbl), topbox_levels = topbox_levels)
+  tb <- .coerce_country(sum_tbl)
   if (!nrow(tb)) stop("No data for spider plot", call. = FALSE)
   if (!is.null(item_ids)) tb <- tb |> dplyr::filter(.data$item_id %in% item_ids)
 
   tb <- tb |> dplyr::mutate(
-    item_lab = paste0(.data$question_short, " (", .data$topbox_label, ")")
+    item_lab = paste0(.data$question_short, " (", .data$response, ")")
   )
 
   has_domain <- "domain" %in% names(tb) && any(!is.na(tb$domain))
@@ -1154,7 +1152,8 @@ plot_besd_spider <- function(sum_tbl,
 #' reference line marks the global mean, and a focal country can be
 #' highlighted in a contrasting colour.
 #'
-#' @param besd_sum A \code{besd_summary_tbl} (output of \code{summary()}).
+#' @param besd_sum A top-box \code{besd_summary_tbl} produced by
+#'   \code{summary(x, combine_top = TRUE)}.
 #' @param item_id  A single item ID string (must match \code{besd_sum$item_id}).
 #'   Mutually exclusive with \code{domain}.
 #' @param domain   A domain string (e.g. \code{"thinking and feeling"}).
@@ -1172,9 +1171,9 @@ plot_besd_spider <- function(sum_tbl,
 #' @examples
 #' data("data_demo", package = "rbesd")
 #' x <- as_besd(data_demo, country_col = "country")
-#' s <- summary(x)
-#' plot_besd_ranked(s, item_id = "tf_benefits")
-#' plot_besd_ranked(s, domain = "thinking and feeling",
+#' s_tb <- summary(x, combine_top = TRUE)
+#' plot_besd_ranked(s_tb, item_id = "tf_benefits")
+#' plot_besd_ranked(s_tb, domain = "thinking and feeling",
 #'                  highlight_country = "Brazil")
 #'
 #' @export
@@ -1192,7 +1191,7 @@ plot_besd_ranked <- function(besd_sum,
     stop("Provide only one of item_id or domain, not both.", call. = FALSE)
   }
 
-  tb <- besd_topbox(.coerce_country(besd_sum))
+  tb <- .coerce_country(besd_sum)
 
   if (!is.null(item_id)) {
     dd <- tb |> dplyr::filter(.data$item_id == !!item_id)

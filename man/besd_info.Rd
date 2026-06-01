@@ -10,8 +10,9 @@ besd_info(x)
 \item{x}{A \code{besd_data} object.}
 }
 \value{
-A named list with entries such as \code{besd_dict}, \code{dem_dict},
-\code{country_col}, \code{weight_col}, and \code{meta}.
+A named list with entries \code{besd_dict}, \code{dem_dict}, \code{besd_items},
+\code{dem_items}, \code{country_col}, \code{stratum_col}, \code{psu_col}, \code{weight_col},
+\code{id_col}, \code{mapping}, and \code{meta}.
 }
 \description{
 Returns dictionaries, column names, and metadata stored as attributes on a

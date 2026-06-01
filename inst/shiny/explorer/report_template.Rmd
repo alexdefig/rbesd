@@ -36,6 +36,7 @@ library(patchwork)
 cty               <- params$country
 besd_sum          <- params$besd_sum
 demo_sum          <- params$demo_sum
+topbox_sum        <- params$topbox_sum
 domain_filter     <- params$domain_filter
 compare_countries <- params$compare_countries
 comparison_item   <- params$comparison_item
@@ -136,10 +137,9 @@ if (include_profile) {
     ctys_for_radar %in% unique(as.character(besd_sum$country))
   ]
 
-  dd_radar   <- besd_sum |> dplyr::filter(country %in% ctys_for_radar)
-  tb_check   <- rbesd::besd_topbox(dd_radar)
+  dd_radar <- topbox_sum |> dplyr::filter(country %in% ctys_for_radar)
 
-  if (nrow(tb_check) >= 3) {
+  if (length(unique(dd_radar$item_id)) >= 3) {
     rbesd::plot_besd_spider(
       dd_radar,
       focal_country = cty,

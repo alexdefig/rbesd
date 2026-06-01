@@ -11,6 +11,8 @@ as_besd(
   mapping = NULL,
   multichoice_specs = list(),
   country_col = "country",
+  stratum_col = NULL,
+  psu_col = NULL,
   weight_col = NULL,
   id_col = NULL,
   keep_original = FALSE,
@@ -34,8 +36,16 @@ item_id.}
 
 \item{country_col}{Country column name.}
 
+\item{stratum_col}{Optional respondent sampling stratum column. Stratum are used by
+\code{summary.besd_data()} when computing design-adjusted summaries but are
+\strong{not} currently used by \code{besd_regress()} (see its documentation).}
+
+\item{psu_col}{Optional respondent sampling PSU column. PSUs are used by
+\code{summary.besd_data()} when computing design-adjusted summaries, but are
+\strong{not} currently used by \code{besd_regress()} (see its documentation).}
+
 \item{weight_col}{Optional name of the survey weight column in \code{df}. Weights are
-used by \code{summary.besd_data()} when computing weighted proportions, but are
+used by \code{summary.besd_data()} when computing design-adjusted summaries, but are
 \strong{not} currently used by \code{besd_regress()} (see its documentation).}
 
 \item{id_col}{Optional respondent id column.}

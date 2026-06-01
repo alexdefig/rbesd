@@ -363,9 +363,6 @@ besd_regress <- function(x,
     list(
       fits = fits,
       prep = prep,
-      # meta carries only fit-level facts. Everything else (level maps,
-      # reference codes, term map, dictionaries) lives in prep, which is the
-      # single source of truth for all metadata.
       meta = list(
         scope    = "by_country",
         engine   = prep$engine,
@@ -379,10 +376,9 @@ besd_regress <- function(x,
   )
 }
 
-# Fit a single multilevel model across all countries. Encoding and dummy
-# expansion are already done in besd_prepare(); this function builds the
-# mixed-effects formula, applies complete-case deletion globally, and
-# dispatches to the engine.
+# Fit a single multilevel model across all countries. Encoding and dummy are done in 
+# besd_prepare(); this function builds the  mixed-effects formuls and applies 
+# complete-case deletion globally.
 .fit_multilevel <- function(prep, ...) {
   df           <- prep$df
   outcomes     <- prep$outcomes
@@ -438,9 +434,6 @@ besd_regress <- function(x,
     list(
       fits = fits,
       prep = prep,
-      # meta carries only fit-level facts. Everything else (level maps,
-      # reference codes, term map, dictionaries) lives in prep, which is the
-      # single source of truth for all metadata.
       meta = list(
         scope    = "multilevel",
         engine   = prep$engine,
@@ -577,7 +570,8 @@ besd_fitted_probs <- function(fit, newdata = NULL, n_sample = 50L) {
         engine     = engine,
         scope      = prep$scope,
         outcomes   = outcomes,
-        y_type     = (y_types[[outcomes[[1L]]]] %||% "binary"),  # first outcome; kept for besd_poststratify compat
+        # first outcome; kept for besd_poststratify compat
+        y_type     = (y_types[[outcomes[[1L]]]] %||% "binary"),  
         y_types    = y_types,
         n_sample   = n_sample,
         categories = cats_list

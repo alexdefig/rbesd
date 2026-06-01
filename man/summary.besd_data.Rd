@@ -6,17 +6,20 @@
 \usage{
 \method{summary}{besd_data}(
   object,
+  method = c("survey"),
   items = NULL,
   conf_level = 0.95,
   include_demographics = TRUE,
   exclude_missing_tokens = FALSE,
-  ci_method = c("dirichlet", "none"),
-  ci_prior = 0.5,
+  combine_top = FALSE,
   ...
 )
 }
 \arguments{
 \item{object}{A \code{besd_data} object.}
+
+\item{method}{Summary method. Default is \code{survey}. Included for forward
+compatibility.}
 
 \item{items}{Optional character vector of item IDs to summarise.}
 
@@ -28,11 +31,6 @@ attribute (see \code{besd_demographics()}).}
 
 \item{exclude_missing_tokens}{If \code{TRUE}, any \code{missing_tokens} supplied to
 \code{as_besd()} are excluded from denominators even if they were kept as levels.}
-
-\item{ci_method}{Interval method for proportions: \code{"dirichlet"} or \code{"none"}.
-(Default is \code{"dirichlet"}.)}
-
-\item{ci_prior}{Prior concentration for Dirichlet/Beta intervals (default 0.5).}
 
 \item{...}{Unused; included for S3 compatibility.}
 }
@@ -50,13 +48,4 @@ response category.
 \details{
 Confidence intervals are computed on proportions and returned as percentages
 (\code{lcl}, \code{ucl} are on the 0--100 scale).
-
-CI method:
-\itemize{
-\item \code{"dirichlet"}: For mutually-exclusive categorical/ordinal/binary items, uses
-Dirichlet-marginal intervals with effective sample size \code{n_eff} (Kish) and a
-symmetric Dirichlet prior controlled by \code{ci_prior}. For multichoice (non-
-exclusive) items, uses Jeffreys/Beta marginal intervals per token.
-\item \code{"none"}: returns \code{lcl}/\code{ucl} as \code{NA}.
-}
 }

@@ -2,11 +2,11 @@
 % Please edit documentation in R/utils-assert.R
 \name{.assert_besd_summary_tbl}
 \alias{.assert_besd_summary_tbl}
-\title{Validate that an object is a usable BeSD summary table}
+\title{Assert that an object is a usable BeSD summary table}
 \usage{
 .assert_besd_summary_tbl(x, fn = NULL, require_attrs = TRUE)
 }
 \description{
-Validate that an object is a usable BeSD summary table
+Assert that an object is a usable BeSD summary table
 }
 \keyword{internal}

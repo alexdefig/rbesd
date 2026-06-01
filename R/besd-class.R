@@ -13,6 +13,8 @@
 #' @param dem_dict Optional demographic dictionary (data frame) describing
 #'   predictors, see `besd_dictionary.R`
 #' @param country_col Name of the country column in `data`.
+#' @param stratum_col Optional name of the sampling stratum column.
+#' @param psu_col Optional name of the PSU column.
 #' @param weight_col Optional name of the survey weight column.
 #' @param id_col Optional name of a respondent ID column.
 #' @param mapping Optional mapping object used by the package.
@@ -22,21 +24,23 @@
 #'
 #' @return An object of class `besd_data`.
 #' @keywords internal
-new_besd_data <- function(data, besd_dict, dem_dict, country_col, weight_col = NULL,
-                          id_col = NULL, mapping = NULL, besd_items = NULL,
-                          dem_items = NULL, meta = list()) {
+new_besd_data <- function(data, besd_dict, dem_dict, country_col, stratum_col = NULL,
+                          psu_col = NULL, weight_col = NULL, id_col = NULL, 
+                          mapping = NULL, besd_items = NULL, dem_items = NULL, 
+                          meta = list()) {
   # Input arg checks
-  if (!is.data.frame(data)) .stopf("`data` must be a data.frame or tibble.")
+  if (!is.data.frame(data))      .stopf("`data` must be a data.frame or tibble.")
   if (!is.data.frame(besd_dict)) .stopf("`besd_dict` must be a data.frame.")
   if (!is.null(dem_dict) && !is.data.frame(dem_dict)) {
     .stopf("`dem_dict` must be NULL or a data.frame.")
   }
-  
   .assert_has_cols(data, country_col, nm = "country_col", scalar = TRUE)
-  .assert_has_cols(data, weight_col, nm = "weight_col", scalar = TRUE, null_ok = TRUE)
-  .assert_has_cols(data, id_col, nm = "id_col", scalar = TRUE, null_ok = TRUE)
-  .assert_has_cols(data, besd_items, nm = "besd_items", null_ok = TRUE, strict = TRUE)
-  .assert_has_cols(data, dem_items, nm = "dem_items", null_ok = TRUE, strict = TRUE)
+  .assert_has_cols(data, stratum_col, nm = "stratum_col", scalar = TRUE, null_ok = TRUE)
+  .assert_has_cols(data, psu_col,     nm = "psu_col",     scalar = TRUE, null_ok = TRUE)
+  .assert_has_cols(data, weight_col,  nm = "weight_col",  scalar = TRUE, null_ok = TRUE)
+  .assert_has_cols(data, id_col,      nm = "id_col",      scalar = TRUE, null_ok = TRUE)
+  .assert_has_cols(data, besd_items,  nm = "besd_items",  null_ok = TRUE, strict = TRUE)
+  .assert_has_cols(data, dem_items,   nm = "dem_items",   null_ok = TRUE, strict = TRUE)
   
   if (!is.list(meta)) .stopf("`meta` must be a list.")
   
@@ -49,6 +53,8 @@ new_besd_data <- function(data, besd_dict, dem_dict, country_col, weight_col = N
     besd_items = besd_items,
     dem_items = dem_items,
     besd_country_col = country_col,
+    besd_stratum_col = stratum_col,
+    besd_psu_col = psu_col,
     besd_weight_col = weight_col,
     besd_id_col = id_col,
     besd_mapping = mapping,
@@ -68,39 +74,34 @@ new_besd_data <- function(data, besd_dict, dem_dict, country_col, weight_col = N
 #' @export
 besd_validate <- function(x, strict = FALSE) {
   
+  # Initialise validation issue messages and helper to print issues
   issues <- character(0)
-  
   add_issue <- function(msg) issues <<- c(issues, msg)
   
   finish <- function() {
-    if (!length(issues)) {
-      return(invisible(TRUE))
-    }
+    if (!length(issues)) return(invisible(TRUE))
     msg <- paste(
       "BeSD validation issues:",
       paste0("- ", issues, collapse = "\n"),
       sep = "\n"
     )
-    if (isTRUE(strict)) {
-      stop(msg, call. = FALSE)
-    }
+    if (isTRUE(strict)) stop(msg, call. = FALSE)
     warning(msg, call. = FALSE)
     invisible(FALSE)
   }
   
-  if (!inherits(x, "besd_data")) {
-    stop("`x` must be a `besd_data` object. Use `as_besd()`.", call. = FALSE)
-  }
-  
-  dict <- attr(x, "besd_dict")
-  dem_dict <- attr(x, "dem_dict")
+  # Check besd_data object and pull attributes
+  .assert_besd(x)
+  dict        <- attr(x, "besd_dict")
+  dem_dict    <- attr(x, "dem_dict")
   country_col <- attr(x, "besd_country_col")
-  weight_col <- attr(x, "besd_weight_col")
-  id_col <- attr(x, "besd_id_col")
-  meta <- attr(x, "besd_meta")
-  besd_items <- attr(x, "besd_items")
-  dem_items <- attr(x, "dem_items")
-  
+  stratum_col <- attr(x, "besd_stratum_col")
+  psu_col     <- attr(x, "besd_psu_col")
+  weight_col  <- attr(x, "besd_weight_col")
+  id_col      <- attr(x, "besd_id_col")
+  meta        <- attr(x, "besd_meta")
+  besd_items  <- attr(x, "besd_items")
+  dem_items   <- attr(x, "dem_items")
   if (is.null(meta)) meta <- list()
   
   if (is.null(dict) || !is.data.frame(dict)) {
@@ -112,10 +113,7 @@ besd_validate <- function(x, strict = FALSE) {
   miss_cols <- setdiff(req_cols, names(dict))
   if (length(miss_cols)) {
     add_issue(
-      sprintf(
-        "Dictionary missing required column(s): %s",
-        paste(miss_cols, collapse = ", ")
-      )
+      sprintf("Dictionary missing required column(s): %s", .pastec(miss_cols))
     )
   }
   
@@ -131,6 +129,14 @@ besd_validate <- function(x, strict = FALSE) {
     add_issue("Missing `besd_country_col` attribute.")
   } else if (!country_col %in% names(x)) {
     add_issue(sprintf("Country column `%s` not found in data.", country_col))
+  }
+  
+  if (!is.null(stratum_col) && nzchar(stratum_col) && !stratum_col %in% names(x)) {
+    add_issue(sprintf("Stratum column `%s` not found in data.", stratum_col))
+  }
+  
+  if (!is.null(psu_col) && nzchar(psu_col) && !psu_col %in% names(x)) {
+    add_issue(sprintf("PSU column `%s` not found in data.", psu_col))
   }
   
   if (!is.null(weight_col) && nzchar(weight_col) && !weight_col %in% names(x)) {
@@ -149,10 +155,7 @@ besd_validate <- function(x, strict = FALSE) {
   bad_types <- setdiff(unique(dict$item_type), allowed_types)
   if (length(bad_types)) {
     add_issue(
-      sprintf(
-        "Dictionary has unknown item_type(s): %s",
-        paste(bad_types, collapse = ", ")
-      )
+      sprintf("Dictionary has unknown item_type(s): %s", .pastec(bad_types))
     )
   }
   
@@ -166,10 +169,7 @@ besd_validate <- function(x, strict = FALSE) {
     miss_besd <- setdiff(besd_items, names(x))
     if (length(miss_besd)) {
       add_issue(
-        sprintf(
-          "`besd_items` attribute lists missing columns: %s",
-          paste(miss_besd, collapse = ", ")
-        )
+        sprintf("`besd_items` attribute lists missing columns: %s", .pastec(miss_besd))
       )
     }
   }
@@ -178,10 +178,7 @@ besd_validate <- function(x, strict = FALSE) {
     miss_dem <- setdiff(dem_items, names(x))
     if (length(miss_dem)) {
       add_issue(
-        sprintf(
-          "`dem_items` attribute lists missing columns: %s",
-          paste(miss_dem, collapse = ", ")
-        )
+        sprintf("`dem_items` attribute lists missing columns: %s", .pastec(miss_dem))
       )
     }
   }
@@ -231,7 +228,7 @@ besd_validate <- function(x, strict = FALSE) {
         add_issue(
           sprintf(
             "Item `%s` has factor level(s) not in dictionary: %s",
-            item_id, paste(bad_lev, collapse = ", ")
+            item_id, .pastec(bad_lev)
           )
         )
       }
@@ -252,7 +249,7 @@ besd_validate <- function(x, strict = FALSE) {
         add_issue(
           sprintf(
             "Item `%s` has ordered level(s) not in dictionary: %s",
-            item_id, paste(bad_lev, collapse = ", ")
+            item_id, .pastec(bad_lev)
           )
         )
       }
@@ -280,7 +277,7 @@ besd_validate <- function(x, strict = FALSE) {
         add_issue(
           sprintf(
             "Multichoice item `%s` has token(s) not in dictionary: %s",
-            item_id, paste(bad_tok, collapse = ", ")
+            item_id, .pastec(bad_tok)
           )
         )
       }
@@ -328,16 +325,20 @@ print.besd_data <- function(x, ...) {
     length(intersect(info$dem_dict$item_id, names(x)))
   }
   
-  w_col <- if (is.null(info$weight_col)) "none" else info$weight_col
-  i_col <- if (is.null(info$id_col)) "none" else info$id_col
+  s_col <- if (is.null(info$stratum_col)) "none" else info$stratum_col
+  p_col <- if (is.null(info$psu_col))     "none" else info$psu_col
+  w_col <- if (is.null(info$weight_col))  "none" else info$weight_col
+  i_col <- if (is.null(info$id_col))      "none" else info$id_col
   
   cat("<besd_data>\n")
   cat(sprintf("- Rows: %s\n", format(nrow(x), big.mark = ",")))
   cat(sprintf("- Countries: %s\n", n_countries))
   cat(sprintf("- BeSD items present: %s (out of %s)\n", n_besd, nrow(info$besd_dict)))
   cat(sprintf("- Predictor items present: %s\n", n_dem))
-  cat(sprintf("- Weight column: %s\n", w_col))
-  cat(sprintf("- ID column: %s\n", i_col))
+  cat(sprintf("- PSU column: %s\n",     p_col))
+  cat(sprintf("- Stratum column: %s\n", s_col))
+  cat(sprintf("- Weight column: %s\n",  w_col))
+  cat(sprintf("- ID column: %s\n",      i_col))
   
   invisible(x)
 }
@@ -349,21 +350,24 @@ print.besd_data <- function(x, ...) {
 #'
 #' @param x A `besd_data` object.
 #'
-#' @return A named list with entries such as `besd_dict`, `dem_dict`,
-#'   `country_col`, `weight_col`, and `meta`.
+#' @return A named list with entries `besd_dict`, `dem_dict`, `besd_items`,
+#'   `dem_items`, `country_col`, `stratum_col`, `psu_col`, `weight_col`, 
+#'   `id_col`, `mapping`, and `meta`.
 #' @export
 besd_info <- function(x) {
   .assert_besd(x)
   list(
-    besd_dict = attr(x, "besd_dict"),
-    dem_dict = attr(x, "dem_dict"),
-    besd_items = attr(x, "besd_items"),
-    dem_items = attr(x, "dem_items"),
+    besd_dict   = attr(x, "besd_dict"),
+    dem_dict    = attr(x, "dem_dict"),
+    besd_items  = attr(x, "besd_items"),
+    dem_items   = attr(x, "dem_items"),
     country_col = attr(x, "besd_country_col"),
-    weight_col = attr(x, "besd_weight_col"),
-    id_col = attr(x, "besd_id_col"),
-    mapping = attr(x, "besd_mapping"),
-    meta = attr(x, "besd_meta")
+    stratum_col = attr(x, "besd_stratum_col"),
+    psu_col     = attr(x, "besd_psu_col"),
+    weight_col  = attr(x, "besd_weight_col"),
+    id_col      = attr(x, "besd_id_col"),
+    mapping     = attr(x, "besd_mapping"),
+    meta        = attr(x, "besd_meta")
   )
 }
 
@@ -379,7 +383,7 @@ besd_info <- function(x) {
 #' @return `x`, invisibly.
 #' @export
 print.besd_summary_tbl <- function(x, ...) {
-  NextMethod()
+  NextMethod()  # dispatch to tbl_df / tbl / data.frame
   
   dem <- attr(x, "demographics")
   if (!is.null(dem) && nrow(dem)) {

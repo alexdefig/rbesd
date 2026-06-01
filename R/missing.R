@@ -243,9 +243,8 @@ besd_recode_levels <- function(x, recode, col = NULL, warn_new = TRUE) {
 #' the joint fraction.
 #'
 #' @param x A `besd_data` object or plain data frame.
-#' @param vars Character vector of variable names to check. If `NULL`, all cols checked.
-#' @param country_col Name of the country column. Inferred automatically from
-#'   `besd_data` objects; required for plain data frames.
+#' @param exclude Character vector of variable names to exclude.
+#'   If `NULL`, all cols checked.
 #' @param threshold Fraction above which a variable or the joint row is flagged. 
 #'    Default `0.05`.
 #' @return A tibble with columns `variable`, `n_total`, `n_missing`, `pct_missing`, 
@@ -253,21 +252,20 @@ besd_recode_levels <- function(x, recode, col = NULL, warn_new = TRUE) {
 #'   `NULL` for the joint row). The final row is always `"(listwise joint)"` and reflects 
 #'   the fraction lost to complete-case deletion across all variables jointly.
 #' @export
-besd_missing_summary <- function(x, vars = NULL, country_col = NULL,
-                                 threshold = 0.05) {
-  if (inherits(x, "besd_data")) {
-    info        <- besd_info(x)
-    country_col <- info$country_col
-    df          <- tibble::as_tibble(x)
+besd_missing_summary <- function(x, exclude = NULL, threshold = 0.05) {
+  .assert_besd(x)
+  df          <- tibble::as_tibble(x)
+  info        <- besd_info(x)
+  country_col <- info$country_col
+  
+  vars <- names(df) 
+  
+  if (!any(exclude %in% vars) & !is.null(exclude)) {
+    .stopf("None of `exclude` found in `x`.")
   } else {
-    if (!is.data.frame(x)) .stopf("`x` must be a besd_data or data frame.")
-    df <- tibble::as_tibble(x)
+    vars <- setdiff(vars, exclude)
   }
-  
-  if (is.null(vars)) vars <- names(df)
-  vars <- intersect(vars, names(df))
-  if (!length(vars)) .stopf("None of the requested variables found in `x`.")
-  
+
   rows <- lapply(vars, function(v) {
     n_total   <- nrow(df)
     n_missing <- sum(is.na(df[[v]]))

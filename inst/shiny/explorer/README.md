@@ -10,7 +10,7 @@ The app reads four files at startup. Three are required; one is optional.
 |------|-----------|--------------|--------|
 | `besd_sum.rds` | Yes | `summary(dat_besd)` | All tabs |
 | `demo_sum.rds` | Yes | `besd_summary_demographics(besd_sum)` | Country Profile — sample composition |
-| `topbox_all.rds` | Yes | `besd_topbox(besd_sum)` | Map, ranked items |
+| `topbox_all.rds` | Yes | `summary(dat_besd, combine_top = TRUE)` | Map, ranked items |
 | `breakdown_sum.rds` | No | `besd_summary_by()` per demographic variable | BeSD by Demographic tab |
 
 `breakdown_sum.rds` is optional. If it is absent the app starts normally and

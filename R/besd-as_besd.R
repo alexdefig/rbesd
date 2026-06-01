@@ -10,8 +10,14 @@
 #' @param multichoice_specs Specs for multichoice when multiple raw cols map to one
 #'  item_id.
 #' @param country_col Country column name.
+#' @param stratum_col Optional respondent sampling stratum column. Stratum are used by
+#'  `summary.besd_data()` when computing design-adjusted summaries but are
+#'   **not** currently used by `besd_regress()` (see its documentation).
+#' @param psu_col Optional respondent sampling PSU column. PSUs are used by 
+#'  `summary.besd_data()` when computing design-adjusted summaries, but are
+#'   **not** currently used by `besd_regress()` (see its documentation).
 #' @param weight_col Optional name of the survey weight column in `df`. Weights are
-#'   used by `summary.besd_data()` when computing weighted proportions, but are
+#'   used by `summary.besd_data()` when computing design-adjusted summaries, but are
 #'   **not** currently used by `besd_regress()` (see its documentation).
 #' @param id_col Optional respondent id column.
 #' @param keep_original If TRUE, keep all original columns (plus harmonised ones).
@@ -102,6 +108,8 @@ as_besd <- function(df,
                     mapping           = NULL,
                     multichoice_specs = list(),
                     country_col       = "country",
+                    stratum_col       = NULL,
+                    psu_col           = NULL,
                     weight_col        = NULL,
                     id_col            = NULL,
                     keep_original     = FALSE,
@@ -110,16 +118,20 @@ as_besd <- function(df,
                     unknown_action    = c("error", "na"),
                     warn_on_unknown   = TRUE) {
   
+
+  # Input arg assignments and checks --------------------------------------------------
   missing_action <- match.arg(missing_action)
   unknown_action <- match.arg(unknown_action)
   
   .assert_is_scalar_string(country_col, "country_col")
   .assert_has_cols(df, country_col, "df")
   .assert_valid_dict(besd_dict)
-  if (!is.data.frame(df))   .stopf("`df` must be a data.frame.")
-  if (!is.null(weight_col)) .assert_has_cols(df, weight_col, "df")
-  if (!is.null(id_col))     .assert_has_cols(df, id_col, "df")
-  if (!is.null(dem_dict))   .assert_valid_dict(dem_dict)
+  if (!is.data.frame(df))    .stopf("`df` must be a data.frame.")
+  if (!is.null(stratum_col)) .assert_has_cols(df, stratum_col, "df")
+  if (!is.null(psu_col))     .assert_has_cols(df, psu_col,     "df")
+  if (!is.null(weight_col))  .assert_has_cols(df, weight_col,  "df")
+  if (!is.null(id_col))      .assert_has_cols(df, id_col,      "df")
+  if (!is.null(dem_dict))    .assert_valid_dict(dem_dict)
   
   # Validate missing_tokens: NULL | character vector | named list
   if (!is.null(missing_tokens) && !is.character(missing_tokens)) {
@@ -130,6 +142,7 @@ as_besd <- function(df,
     }
   }
   
+  # Check dictionary is valid
   dict <- tibble::as_tibble(besd_dict)
   if (!is.null(dem_dict)) dict <- dplyr::bind_rows(dict, tibble::as_tibble(dem_dict))
   .assert_valid_dict(dict)
@@ -144,8 +157,9 @@ as_besd <- function(df,
     .stopf("No dict items found in `df` after mapping (or in raw df if mapping=NULL).")
   }
   
-  # Step 1 — Coerce to dictionary types/levels only.
-  # missing_tokens are passed solely so they are allow-listed and not flagged as
+  # Main: as_besd ---------------------------------------------------------------------
+  # Step 1 — Coerce to dictionary types/levels.
+  # missing_tokens are passed solely so they are allowed and not flagged as
   # unknown values. Tokens are always kept as explicit trailing factor levels at
   # this stage; recoding them to NA is handled separately in Step 2.
   df2 <- .coerce_dict_items(
@@ -159,7 +173,7 @@ as_besd <- function(df,
   )
   
   # Step 2 — Handle missing tokens
-  # missing_action == "keep": tokens remain as explicit factor levels; nothing to do.
+  # missing_action == "keep": tokens remain as explicit factor levels (nothing to do).
   if (missing_action == "na" && !is.null(missing_tokens)) {
     df2 <- besd_recode_missing(
       x                 = df2,
@@ -173,7 +187,7 @@ as_besd <- function(df,
   
   # Keep all original data or only core columns
   if (!isTRUE(keep_original)) {
-    keep <- unique(c(country_col, weight_col, id_col, items))
+    keep <- unique(c(country_col, stratum_col, psu_col, weight_col, id_col, items))
     keep <- keep[!is.null(keep) & !is.na(keep) & nzchar(keep)]
     df2  <- df2[, keep, drop = FALSE]
   }
@@ -183,6 +197,7 @@ as_besd <- function(df,
     intersect(tibble::as_tibble(dem_dict)$item_id, names(df2))
   }
   
+  # besd_data constructor
   new_besd_data(
     data        = tibble::as_tibble(df2),
     besd_dict   = besd_dict,
@@ -190,6 +205,8 @@ as_besd <- function(df,
     besd_items  = besd_items,
     dem_items   = dem_items,
     country_col = country_col,
+    stratum_col = stratum_col,
+    psu_col     = psu_col,
     weight_col  = weight_col,
     id_col      = id_col,
     mapping     = mapping,
@@ -243,7 +260,7 @@ as_besd <- function(df,
 }
 
 # Coerce items to dictionary types and levels.
-# missing_tokens are allow-listed so they are not flagged as unknown values.
+# missing_tokens are allowed so they are not flagged as unknown values.
 # They are always retained as explicit trailing factor levels here; callers
 # that want them recoded to NA should call besd_recode_missing() afterwards.
 .coerce_dict_items <- function(df,
@@ -389,7 +406,7 @@ as_besd <- function(df,
 }
 
 
-#
+# Coerce multichoice items
 .coerce_multichoice_packed <- function(x,
                                        levels_std,
                                        sep             = .BESD_SEP,

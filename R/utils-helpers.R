@@ -7,7 +7,7 @@
 # .require_pkg()      – stop with install hint if a package is missing
 # .stopf()            – sprintf-style stop() with call. = FALSE
 # .pastec()           – paste with ", " collapse for error messages
-# .strip_non_alpnum() – normalise a string to lowercase alphanumeric
+# .strip_non_alpnum() – normalise a string to lower-case alphanumeric
 # .make_safe_names()  – convert arbitrary strings to unique R identifiers
 
 # Unit separator (U+001F): chosen as the packed multichoice delimiter because
@@ -30,14 +30,13 @@
   }
 }
 
-# sprintf-style wrapper around stop() that suppresses the call context from the 
-# error message (keeps output tidy for users)
+# wrapper around stop() that suppresses the call context from the message
 .stopf <- function(fmt, ...) stop(sprintf(fmt, ...), call. = FALSE)
 
 # Collapse a character vector to a single comma-separated string.
 .pastec <- function(x) paste(x, collapse = ", ")
 
-# Reduce a string to lowercase alphanumeric characters only, stripping
+# Reduce a string to lower-case alphanumeric characters only, stripping
 # whitespace, punctuation, and Unicode non-word characters. Used to
 # normalise response labels before regex matching (e.g. catch-all detection).
 .strip_non_alpnum <- function(x) {

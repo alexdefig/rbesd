@@ -4,10 +4,24 @@
 \alias{launch_explorer}
 \title{Launch the BeSD Explorer Shiny app}
 \usage{
-launch_explorer()
+launch_explorer(data_dir = NULL)
+}
+\arguments{
+\item{data_dir}{Path to a directory containing the \code{.rds} files
+produced by \code{\link{prepare_explorer_data}}. If \code{NULL}
+(default), the standard user data directory is tried first, then the
+bundled demo data.}
 }
 \description{
 Opens the interactive BeSD Explorer dashboard in your default browser.
-The app uses pre-computed \code{besd_sum} and \code{demo_sum} objects
-stored in the app's \code{data/} directory.
+}
+\details{
+If \code{data_dir} is not supplied, the function first looks for user data
+prepared by \code{\link{prepare_explorer_data}} in the default location
+(\code{tools::R_user_dir("rbesd", "data")}). If none is found there, it
+falls back to the bundled demo dataset so you can explore the app
+immediately.
+}
+\seealso{
+\code{\link{prepare_explorer_data}}
 }

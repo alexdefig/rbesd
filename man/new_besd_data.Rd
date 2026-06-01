@@ -9,6 +9,8 @@ new_besd_data(
   besd_dict,
   dem_dict,
   country_col,
+  stratum_col = NULL,
+  psu_col = NULL,
   weight_col = NULL,
   id_col = NULL,
   mapping = NULL,
@@ -28,6 +30,10 @@ dem_dict is provided then these variables should also be provided.}
 predictors, see \code{besd_dictionary.R}}
 
 \item{country_col}{Name of the country column in \code{data}.}
+
+\item{stratum_col}{Optional name of the sampling stratum column.}
+
+\item{psu_col}{Optional name of the PSU column.}
 
 \item{weight_col}{Optional name of the survey weight column.}
 

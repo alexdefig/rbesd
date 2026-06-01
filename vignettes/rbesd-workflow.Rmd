@@ -266,9 +266,9 @@ plot_besd_bars(
 ### Top-box summary
 
 ```{r}
-tb <- besd_topbox(smry)
+tb <- summary(y, combine_top = TRUE)
 tb %>%
-  select(country, item_id, topbox, pct) %>%
+  select(country, item_id, response, pct) %>%
   print(n = 15)
 ```
 

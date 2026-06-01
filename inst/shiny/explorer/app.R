@@ -883,6 +883,7 @@ server <- function(input, output, session) {
         country           = cty,
         besd_sum          = besd_sum,
         demo_sum          = demo_sum,
+        topbox_sum        = topbox_all,
         domain_filter     = input$domain_filter,
         compare_countries = input$compare_country[input$compare_country %in% countries],
         comparison_item   = input$comparison_item,
