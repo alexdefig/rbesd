@@ -18,6 +18,34 @@ breakdown_sum <- {
 topbox_all <- readRDS(file.path(.data_dir, "topbox_all.rds"))
 countries  <- sort(unique(as.character(besd_sum$country)))
 
+# Authoritative ordinal ordering and top-box level sets come from the embedded
+# dictionary (stored as a besd_sum attribute), which helpers read for level
+# order.
+besd_dict <- attr(besd_sum, "besd_dict")
+
+# Coerce a dictionary cell to a character vector of levels. Handles both
+# representations: a list-column whose element is already a character vector,
+# and a comma-joined scalar string ("a, b, c").
+.dict_vec <- function(x) {
+  if (length(x) == 0L) return(character(0L))
+  v <- if (is.list(x)) x[[1L]] else x
+  v <- as.character(v)
+  if (length(v) == 1L && grepl(",", v)) v <- trimws(strsplit(v, ",")[[1L]])
+  v[!is.na(v) & nzchar(v)]
+}
+
+# Ordered response levels for an item, from the dictionary (negative→positive).
+dict_item_levels <- function(item_id) {
+  if (is.null(besd_dict)) return(character(0L))
+  .dict_vec(besd_dict$levels[besd_dict$item_id == item_id])
+}
+
+# The dictionary's top-box level set for an item (already direction-aware).
+dict_top_levels <- function(item_id) {
+  if (is.null(besd_dict)) return(character(0L))
+  .dict_vec(besd_dict$toplevs[besd_dict$item_id == item_id])
+}
+
 # ── 3. Dropdown choices (item-level only, grouped by domain) ──────────────────
 item_meta <- topbox_all |>
   dplyr::distinct(.data$item_id, .data$question_short, .data$domain) |>
@@ -47,41 +75,28 @@ world_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") |>
 
 # ── 5. Map helpers ────────────────────────────────────────────────────────────
 
-# Return the 2 most-positive response labels for an ordinal item.
-# Anchors on topbox_label so the result is correct regardless of whether
-# item_responses() orders negative→positive or positive→negative.
+# Return the most-positive ("top-box") response labels for an ordinal item.
+# Reads the level set straight from the dictionary's toplevs, which is already
+# direction-aware (handles reverse-coded scales). Restricted to levels actually
+# present in the data. Falls back to the top 2 ordinal levels if the dictionary
+# is unavailable.
 get_top2_levels <- function(metric) {
+  present <- unique(as.character(besd_sum$response[besd_sum$item_id == metric]))
+  top     <- dict_top_levels(metric)
+  top     <- top[top %in% present]
+  if (length(top) >= 1L) return(top)
+
   all_levs <- item_responses(metric)
-  n        <- length(all_levs)
-  if (n <= 1L) return(all_levs)
-
-  tb_raw <- topbox_all |>
-    dplyr::filter(.data$item_id == metric) |>
-    dplyr::pull(.data$topbox_label) |>
-    unique()
-  if (length(tb_raw) == 0L || is.na(tb_raw[1L])) return(tail(all_levs, 2L))
-
-  tb_label <- trimws(strsplit(as.character(tb_raw[1L]), ",")[[1L]])[1L]
-  pos      <- which(all_levs == tb_label)
-  if (length(pos) == 0L) return(tail(all_levs, 2L))
-
-  if (pos == 1L) {
-    all_levs[1L:2L]          # topbox is first → descending order; second is index 2
-  } else if (pos == n) {
-    all_levs[(n - 1L):n]     # topbox is last  → ascending order; second is index n-1
-  } else {
-    all_levs[c(pos, pos + 1L)]  # fallback: topbox + next
-  }
+  if (length(all_levs) <= 1L) return(all_levs)
+  tail(all_levs, 2L)
 }
 
-# Compute per-country combined % for the top 2 ordinal response levels.
+# Per-country combined % for the top 2 ordinal response levels, taken from the
+# topbox_all summary (the combined top-box pct per country x item).
 map_scores_top2 <- function(metric) {
-  top2_levs <- get_top2_levels(metric)
-  besd_sum |>
-    dplyr::filter(.data$item_id == !!metric,
-                  as.character(.data$response) %in% top2_levs) |>
-    dplyr::group_by(.data$country) |>
-    dplyr::summarise(mean_pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
+  topbox_all |>
+    dplyr::filter(.data$item_id == !!metric) |>
+    dplyr::select("country", mean_pct = "pct")
 }
 
 # Build the palette, joined sf, and legend params for a given metric + level.
@@ -168,21 +183,22 @@ apply_map_layers <- function(lf, layers) {
 # Respects factor ordering if response_key is present, otherwise orders by
 # mean % descending (most-endorsed response first).
 item_responses <- function(item_id) {
-  dd <- besd_sum |>
-    dplyr::filter(.data$item_id == !!item_id)
-  if ("response_key" %in% names(dd) && is.factor(dd$response_key)) {
-    levs <- levels(droplevels(dd$response_key))
-    ordered_resp <- sub(".*___", "", levs)
-    present      <- unique(as.character(dd$response))
-    ordered_resp[ordered_resp %in% present]
-  } else {
-    dd |>
-      dplyr::group_by(.data$response) |>
-      dplyr::summarise(m = mean(.data$pct, na.rm = TRUE), .groups = "drop") |>
-      dplyr::arrange(dplyr::desc(.data$m)) |>
-      dplyr::pull(.data$response) |>
-      as.character()
+  dd      <- besd_sum |> dplyr::filter(.data$item_id == !!item_id)
+  present <- unique(as.character(dd$response))
+
+  ordered_resp <- dict_item_levels(item_id)
+  if (length(ordered_resp) > 0L) {
+    keep <- ordered_resp[ordered_resp %in% present]
+    if (length(keep) > 0L) return(keep)
   }
+
+  # Fallback (dictionary unavailable): order by mean % descending.
+  dd |>
+    dplyr::group_by(.data$response) |>
+    dplyr::summarise(m = mean(.data$pct, na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(dplyr::desc(.data$m)) |>
+    dplyr::pull(.data$response) |>
+    as.character()
 }
 
 # Compute per-country % for a specific item × response combination.
@@ -199,9 +215,9 @@ initial_level_choices <- item_responses(.initial_item_id)
 # Default to the top-box response so startup matches previous behaviour.
 .topbox_default <- topbox_all |>
   dplyr::filter(.data$item_id == .initial_item_id) |>
-  dplyr::pull(.data$topbox_label) |>
+  dplyr::pull(.data$response) |>
   unique()
-# topbox_label can be a comma-separated string; take the first token
+# response holds the comma-joined top-box levels; take the first token
 .topbox_default <- trimws(strsplit(.topbox_default[1], ",")[[1]])[1]
 initial_level_selected <- if (length(.topbox_default) > 0 &&
                                !is.na(.topbox_default) &&
@@ -240,15 +256,13 @@ make_profile_bar <- function(besd_sum_cty, domain_filter = "all") {
     dplyr::arrange(.data$item_id) |>
     dplyr::pull(.data$item_id)
 
-  # Helper: get per-item response ordering respecting besd_dict factor levels
+  # Helper: get per-item response ordering from the dictionary (negative→positive).
   get_resp_levels <- function(di) {
-    if ("response_key" %in% names(di) && is.factor(di$response_key)) {
-      rk <- levels(droplevels(di$response_key))
-      levs <- unique(sub(".*___", "", rk))
-    } else {
-      levs <- unique(as.character(di$response))
-    }
-    levs[levs %in% as.character(di$response)]
+    present <- unique(as.character(di$response))
+    iid     <- unique(as.character(di$item_id))[1L]
+    levs    <- dict_item_levels(iid)
+    keep    <- levs[levs %in% present]
+    if (length(keep) > 0L) keep else present
   }
 
   # Build one plotly trace per (item × response) in correct stack order

@@ -425,9 +425,9 @@ server <- function(input, output, session) {
     levs     <- item_responses(input$map_metric)
     top_resp <- topbox_all |>
       dplyr::filter(.data$item_id == input$map_metric) |>
-      dplyr::pull(.data$topbox_label) |>
+      dplyr::pull(.data$response) |>
       unique()
-    # topbox_label may be comma-separated; take the first token
+    # response holds the comma-joined top-box levels; take the first token
     top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])[1]
     sel <- if (length(top_resp) > 0 && !is.na(top_resp) && top_resp %in% levs) top_resp else levs[1]
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
@@ -604,38 +604,14 @@ server <- function(input, output, session) {
       character(1L)
     )
 
-    # ── Score computation: top-2-box for ordinal, topbox for binary ───────────
-    ordinal_ids <- unique(besd_sum$item_id[besd_sum$item_type == "ordinal"])
-    radar_items     <- item_info$item_id
-    ordinal_radar   <- radar_items[radar_items %in% ordinal_ids]
-    nonordinal_radar <- radar_items[!radar_items %in% ordinal_ids]
-
-    if (length(ordinal_radar) > 0L) {
-      t2_list <- lapply(ordinal_radar, function(iid) {
-        top2_levs <- get_top2_levels(iid)
-        besd_sum |>
-          dplyr::filter(
-            .data$country %in% ctys,
-            .data$item_id == iid,
-            as.character(.data$response) %in% top2_levs
-          ) |>
-          dplyr::group_by(.data$country, .data$item_id) |>
-          dplyr::summarise(pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
-      })
-      t2_scores <- dplyr::bind_rows(t2_list)
-    } else {
-      t2_scores <- data.frame(country  = character(),
-                              item_id  = character(),
-                              pct      = numeric(),
-                              stringsAsFactors = FALSE)
-    }
-
-    tb_scores <- topbox_all |>
+    # ── Score computation: combined top-box from topbox_all for every item ────
+    # topbox_all stores the design-based combined top-box percentage per
+    # country x item (top-2 for ordinal, top level / "Yes" for binary).
+    radar_items <- item_info$item_id
+    all_scores  <- topbox_all |>
       dplyr::filter(.data$country %in% ctys,
-                    .data$item_id %in% nonordinal_radar) |>
+                    .data$item_id %in% radar_items) |>
       dplyr::select("country", "item_id", "pct")
-
-    all_scores <- dplyr::bind_rows(t2_scores, tb_scores)
 
     # ── Domain separator geometry ─────────────────────────────────────────────
     dom_present <- dom_levels[dom_levels %in% item_info$domain]
@@ -928,8 +904,8 @@ server <- function(input, output, session) {
       paste0(
         'Bars show the combined percentage of \u201c', top2_levs[1],
         '\u201d and \u201c', top2_levs[2],
-        '\u201d responses. Credible intervals are derived by error propagation ',
-        '(combining the standard errors of each response category) and are capped at 0\u2013100%.'
+        '\u201d responses, with the design-based 95% confidence interval for ',
+        'that combined response.'
       )
     )
   })
@@ -966,38 +942,11 @@ server <- function(input, output, session) {
     shiny::req(input$map_metric, input$map_level)
 
     if (isTRUE(input$top2box) && is_ordinal()) {
-      top2_levs <- get_top2_levels(input$map_metric)
-      has_ci    <- all(c("lcl", "ucl") %in% names(besd_sum))
-      tb_grp    <- besd_sum |>
-        dplyr::filter(
-          .data$item_id == input$map_metric,
-          as.character(.data$response) %in% top2_levs
-        ) |>
-        dplyr::group_by(.data$country)
-      if (has_ci) {
-        tb <- tb_grp |>
-          dplyr::summarise(
-            pct = sum(.data$pct, na.rm = TRUE),
-            k   = sum(.data$n_resp, na.rm = TRUE),
-            n   = dplyr::first(.data$n),
-            .groups = "drop"
-          ) |>
-          dplyr::mutate(
-            # Wilson score CI: z²/(4n²) inside sqrt, NOT z²/(4n)
-            p_hat  = .data$k / .data$n,
-            denom  = 1 + 1.96^2 / .data$n,
-            centre = (.data$p_hat + 1.96^2 / (2 * .data$n)) / .data$denom,
-            half   = 1.96 * sqrt(.data$p_hat * (1 - .data$p_hat) / .data$n +
-                                   1.96^2 / (4 * .data$n^2)) / .data$denom,
-            lcl    = pmax(0,   (.data$centre - .data$half) * 100),
-            ucl    = pmin(100, (.data$centre + .data$half) * 100)
-          ) |>
-          dplyr::select(-"k", -"n", -"p_hat", -"denom", -"centre", -"half")
-      } else {
-        tb <- tb_grp |>
-          dplyr::summarise(pct = sum(.data$pct, na.rm = TRUE), .groups = "drop")
-      }
-      tb <- tb |>
+      # topbox_all holds the combined top-box pct and its design-based CI per
+      # country, computed by summary(combine_top = TRUE).
+      tb <- topbox_all |>
+        dplyr::filter(.data$item_id == input$map_metric) |>
+        dplyr::select(dplyr::any_of(c("country", "pct", "lcl", "ucl"))) |>
         dplyr::arrange(.data$pct) |>
         dplyr::mutate(
           country_f = factor(as.character(.data$country),
