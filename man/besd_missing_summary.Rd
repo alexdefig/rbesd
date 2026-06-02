@@ -4,15 +4,13 @@
 \alias{besd_missing_summary}
 \title{Summarise missing data fractions for regression variables}
 \usage{
-besd_missing_summary(x, vars = NULL, country_col = NULL, threshold = 0.05)
+besd_missing_summary(x, exclude = NULL, threshold = 0.05)
 }
 \arguments{
 \item{x}{A \code{besd_data} object or plain data frame.}
 
-\item{vars}{Character vector of variable names to check. If \code{NULL}, all cols checked.}
-
-\item{country_col}{Name of the country column. Inferred automatically from
-\code{besd_data} objects; required for plain data frames.}
+\item{exclude}{Character vector of variable names to exclude.
+If \code{NULL}, all cols checked.}
 
 \item{threshold}{Fraction above which a variable or the joint row is flagged.
 Default \code{0.05}.}

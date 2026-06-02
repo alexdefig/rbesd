@@ -12,6 +12,7 @@
   include_demographics = TRUE,
   exclude_missing_tokens = FALSE,
   combine_top = FALSE,
+  ci = TRUE,
   ...
 )
 }
@@ -31,6 +32,15 @@ attribute (see \code{besd_demographics()}).}
 
 \item{exclude_missing_tokens}{If \code{TRUE}, any \code{missing_tokens} supplied to
 \code{as_besd()} are excluded from denominators even if they were kept as levels.}
+
+\item{combine_top}{If \code{TRUE}, collapse the top-box levels (\code{toplevs} from the
+item dictionary) into a single combined response per item.}
+
+\item{ci}{If \code{TRUE} (default), compute survey-design confidence intervals
+(\code{lcl}, \code{ucl}) via \code{\link[survey:svyciprop]{survey::svyciprop()}}. If \code{FALSE}, report weighted
+proportions only with \code{lcl}/\code{ucl} set to \code{NA} — this skips the survey
+design entirely, so it is robust to thin cells and emits no \code{glm}
+convergence warnings (used by \code{\link[=besd_summary_by]{besd_summary_by()}}).}
 
 \item{...}{Unused; included for S3 compatibility.}
 }

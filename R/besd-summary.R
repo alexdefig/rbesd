@@ -18,8 +18,15 @@
 #'   attribute (see `besd_demographics()`).
 #' @param exclude_missing_tokens If `TRUE`, any `missing_tokens` supplied to
 #'   `as_besd()` are excluded from denominators even if they were kept as levels.
+#' @param combine_top If `TRUE`, collapse the top-box levels (`toplevs` from the
+#'   item dictionary) into a single combined response per item.
+#' @param ci If `TRUE` (default), compute survey-design confidence intervals
+#'   (`lcl`, `ucl`) via [survey::svyciprop()]. If `FALSE`, report weighted
+#'   proportions only with `lcl`/`ucl` set to `NA` — this skips the survey
+#'   design entirely, so it is robust to thin cells and emits no `glm`
+#'   convergence warnings (used by [besd_summary_by()]).
 #' @param method Summary method. Default is `survey`. Included for forward
-#'   compatibility. 
+#'   compatibility.
 #' @param ... Unused; included for S3 compatibility.
 #'
 #' @return A tibble with columns including `country`, `item_id`, `response`,
@@ -34,6 +41,7 @@ summary.besd_data <- function(object,
                               include_demographics = TRUE,
                               exclude_missing_tokens = FALSE,
                               combine_top = FALSE,
+                              ci = TRUE,
                               ...) {
   # Check object is as_besd class
   .assert_besd(object)
@@ -100,7 +108,8 @@ summary.besd_data <- function(object,
       multichoice_specs = multichoice_specs,
       missing_tokens = missing_tokens,
       exclude_missing_tokens = exclude_missing_tokens,
-      combine_top = combine_top
+      combine_top = combine_top,
+      ci = ci
     )
   }))
   
@@ -139,7 +148,8 @@ summary.besd_data <- function(object,
                                      multichoice_specs = list(),
                                      missing_tokens = NULL,
                                      exclude_missing_tokens = TRUE,
-                                     combine_top = FALSE) {
+                                     combine_top = FALSE,
+                                     ci = TRUE) {
 
   method     <- match.arg(method, c("survey"))
   item_type  <- meta_row$item_type[[1]]
@@ -206,7 +216,8 @@ summary.besd_data <- function(object,
         toplevs     = toplevs,
         sep         = sep,
         conf_level  = conf_level,
-        combine_top = combine_top
+        combine_top = combine_top,
+        ci          = ci
       )
     })
 
@@ -227,7 +238,8 @@ summary.besd_data <- function(object,
 .besd_summarise_country_survey <- function(dfi, cty, item_id, item_type,
                                            levels_std, toplevs = NULL,
                                            sep, conf_level,
-                                           combine_top = FALSE) {
+                                           combine_top = FALSE,
+                                           ci = TRUE) {
   dfi <- dfi[!is.na(dfi$.item) & !is.na(dfi$.weight), , drop = FALSE]
   n   <- nrow(dfi)
 
@@ -279,24 +291,49 @@ summary.besd_data <- function(object,
     } else {
       dfi$.item %in% level
     }
-    svy_lv <- build_design(dfi)
-    est <- survey::svyciprop(
-      ~ .indicator,
-      design = svy_lv,
-      method = "logit",
-      level  = conf_level,
-      df     = survey::degf(svy_lv)
-    )
-    ci <- attr(est, "ci")
+    if (isTRUE(ci)) {
+      svy_lv <- build_design(dfi)
+      # withCallingHandlers allows svyviprop to resume after handler flags
+      # tryCatch would unwind stack and abandon call to svyciprop
+      est <- withCallingHandlers(
+        survey::svyciprop(
+          ~ .indicator,
+          design = svy_lv,
+          method = "logit",
+          level  = conf_level,
+          df     = survey::degf(svy_lv)
+        ),
+        warning = function(w) {
+          message(sprintf(
+            "[CI warn] country=%s item=%s response=%s n=%d pct=%.1f: %s",
+            cty, item_id,
+            if (isTRUE(combine_top)) resp_label else paste(level, collapse = "+"),
+            n, 100 * mean(dfi$.indicator), conditionMessage(w)
+          ))
+          invokeRestart("muffleWarning")
+        }
+      )
+      ci_int <- attr(est, "ci")
+      pct <- 100 * as.numeric(est)
+      lcl <- 100 * ci_int[[1]]
+      ucl <- 100 * ci_int[[2]]
+    } else {
+      # Weighted proportion only (no survey design, no CI). Robust to thin
+      # cells: never errors and emits no glm convergence warnings.
+      w   <- dfi$.weight
+      pct <- 100 * sum(w[dfi$.indicator]) / sum(w)
+      lcl <- NA_real_
+      ucl <- NA_real_
+    }
     tibble::tibble(
       country   = cty,
       item_id   = item_id,
       item_type = item_type,
       response  = if (isTRUE(combine_top)) resp_label else level,
       n         = n,
-      pct       = 100 * as.numeric(est),
-      lcl       = 100 * ci[[1]],
-      ucl       = 100 * ci[[2]]
+      pct       = pct,
+      lcl       = lcl,
+      ucl       = ucl
     )
   }))
 }
@@ -458,7 +495,10 @@ besd_summary_by <- function(object, by_col, ...) {
     meta        = info$meta %||% list()
   )
 
-  sm <- summary(tmp_obj, include_demographics = FALSE, ...)
+  # Demographic breakdowns report weighted proportions with n shown alongside;
+  # CIs are skipped (ci = FALSE) so thin subgroup cells can't degenerate the
+  # survey design or trigger glm convergence warnings.
+  sm <- summary(tmp_obj, include_demographics = FALSE, ci = FALSE, ...)
 
   # Split the strata key back into country and subgroup_level
   parts             <- strsplit(as.character(sm$country), sep, fixed = TRUE)
