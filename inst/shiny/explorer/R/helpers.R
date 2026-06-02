@@ -217,8 +217,10 @@ initial_level_choices <- item_responses(.initial_item_id)
   dplyr::filter(.data$item_id == .initial_item_id) |>
   dplyr::pull(.data$response) |>
   unique()
-# response holds the comma-joined top-box levels; take the first token
-.topbox_default <- trimws(strsplit(.topbox_default[1], ",")[[1]])[1]
+# response holds the comma-joined top-box levels in ascending (negative→
+# positive) order; take the last token, i.e. the most-positive level.
+.topbox_default <- trimws(strsplit(.topbox_default[1], ",")[[1]])
+.topbox_default <- .topbox_default[length(.topbox_default)]
 initial_level_selected <- if (length(.topbox_default) > 0 &&
                                !is.na(.topbox_default) &&
                                .topbox_default %in% initial_level_choices)

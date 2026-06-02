@@ -427,8 +427,10 @@ server <- function(input, output, session) {
       dplyr::filter(.data$item_id == input$map_metric) |>
       dplyr::pull(.data$response) |>
       unique()
-    # response holds the comma-joined top-box levels; take the first token
-    top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])[1]
+    # response holds the comma-joined top-box levels in ascending (negative→
+    # positive) order; take the last token, i.e. the most-positive level.
+    top_resp <- trimws(strsplit(top_resp[1], ",")[[1]])
+    top_resp <- top_resp[length(top_resp)]
     sel <- if (length(top_resp) > 0 && !is.na(top_resp) && top_resp %in% levs) top_resp else levs[1]
     shiny::updateSelectInput(session, "map_level", choices = levs, selected = sel)
     # Always redraw map on metric change — level observer won't fire if sel is
