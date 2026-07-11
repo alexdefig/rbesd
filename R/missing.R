@@ -459,10 +459,48 @@ besd_rare_levels <- function(x, predictors, country_col = NULL,
                               context = NULL) {
   vars <- intersect(vars, names(df))
   if (!length(vars)) return(invisible(NULL))
-  
-  smry   <- besd_missing_summary(df, vars = vars, country_col = country_col,
-                                 threshold = threshold)
-  joint  <- smry[smry$variable == "(listwise joint)", , drop = FALSE]
+
+  # Per-variable + joint missingness on the post-prep frame. Computed directly
+  # here rather than via besd_missing_summary(): that helper is a besd_data-only,
+  # all-columns public function and cannot measure this transformed, subsetted
+  # working frame (multichoice expansions and min_n_context NAs only exist here).
+  n_total  <- nrow(df)
+  var_rows <- lapply(vars, function(v) {
+    n_missing <- sum(is.na(df[[v]]))
+    prop      <- if (n_total > 0L) n_missing / n_total else 0
+    by_cty    <- NULL
+    if (!is.null(country_col) && country_col %in% names(df)) {
+      by_cty <- df |>
+        dplyr::group_by(country = .data[[country_col]]) |>
+        dplyr::summarise(
+          n_total      = dplyr::n(),
+          n_missing    = sum(is.na(.data[[v]])),
+          prop_missing = .data$n_missing / .data$n_total,
+          .groups      = "drop"
+        ) |>
+        dplyr::filter(.data$n_missing > 0) |>
+        dplyr::arrange(dplyr::desc(.data$prop_missing))
+    }
+    tibble::tibble(
+      variable     = v,
+      prop_missing = prop,
+      flagged      = prop >= threshold,
+      by_country   = list(by_cty)
+    )
+  })
+
+  # Joint (listwise) row — the fraction complete.cases() actually drops.
+  n_lost   <- n_total - sum(stats::complete.cases(df[, vars, drop = FALSE]))
+  pct_lost <- if (n_total > 0L) n_lost / n_total else 0
+  joint    <- tibble::tibble(
+    variable     = "(listwise joint)",
+    prop_missing = pct_lost,
+    n_missing    = n_lost,
+    n_total      = n_total,
+    flagged      = pct_lost >= threshold
+  )
+
+  smry <- dplyr::bind_rows(var_rows)
   
   if (!nrow(joint) || !isTRUE(joint$flagged)) return(invisible(NULL))
   
