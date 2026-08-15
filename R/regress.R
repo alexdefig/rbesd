@@ -97,6 +97,8 @@ besd_regress <- function(x,
   log_rows    <- list()
   fits_all    <- list()
   y_types_all <- list()
+  label_map_all  <- list()  # sub-outcome -> human-readable level (multichoice only)
+  parent_map_all <- list()  # sub-outcome -> parent item_id  (multichoice only)
   n           <- length(outcome)
   
   # Fit model for each outcome
@@ -114,14 +116,16 @@ besd_regress <- function(x,
       y_type   <- .item_type(dict, yy)
       df_y     <- prep$df
       outcomes <- yy
-      outcome_label_map <- list()
+      outcome_label_map  <- list()
+      outcome_parent_map <- list()
       if (y_type == "multichoice") {
         levs     <- dict$levels[[match(yy, dict$item_id)]]
         ex       <- .expand_multichoice_outcome(df_y, yy, levs, sep = .BESD_SEP)
         df_y     <- ex$df
         outcomes <- ex$outcomes
         y_type   <- "binary"
-        outcome_label_map <- ex$outcome_label_map
+        outcome_label_map  <- ex$outcome_label_map
+        outcome_parent_map <- ex$outcome_parent_map
       }
       
       # Warn on joint missingness for this outcome + common predictors
@@ -160,6 +164,11 @@ besd_regress <- function(x,
     )
     
     if (!is.null(result$fit)) {
+      # Multichoice outcomes expand into several binary sub-outcomes; keep the
+      # sub-outcome -> level label map so poststratified rows can be labelled.
+      label_map_all  <- utils::modifyList(label_map_all,  as.list(outcome_label_map))
+      parent_map_all <- utils::modifyList(parent_map_all, as.list(outcome_parent_map))
+
       # Flatten the per-outcome besd_fit wrapper: extract raw models and y_type.
       # For by_country the inner structure is fits[[country]][[sub_outcome]];
       # for multilevel it is fits[[sub_outcome]]. Both are merged into fits_all
@@ -194,7 +203,9 @@ besd_regress <- function(x,
         scope    = scope,
         engine   = engine,
         outcomes = names(y_types_all),
-        y_types  = y_types_all
+        y_types  = y_types_all,
+        outcome_label_map  = label_map_all,
+        outcome_parent_map = parent_map_all
       ),
       log  = log
     ),
@@ -471,8 +482,11 @@ besd_regress <- function(x,
   
   df2 <- cbind(df, as.data.frame(mat, stringsAsFactors = FALSE))
   # after
-  list(df = df2, outcomes = out_names, 
-       outcome_label_map = stats::setNames(levels_std, out_names))
+  list(df = df2, outcomes = out_names,
+       outcome_label_map  = stats::setNames(levels_std, out_names),
+       # sub-outcome -> parent item_id, so downstream summaries can report the
+       # parent item with one row per level (as summary.besd_data() does).
+       outcome_parent_map = stats::setNames(rep(item, length(out_names)), out_names))
 }
 
 
@@ -571,10 +585,17 @@ besd_fitted_probs <- function(fit, newdata = NULL, n_sample = 50L) {
         scope      = prep$scope,
         outcomes   = outcomes,
         # first outcome; kept for besd_poststratify compat
-        y_type     = (y_types[[outcomes[[1L]]]] %||% "binary"),  
+        y_type     = (y_types[[outcomes[[1L]]]] %||% "binary"),
         y_types    = y_types,
         n_sample   = n_sample,
-        categories = cats_list
+        categories = cats_list,
+        # Dictionaries carried through so besd_poststratify() can emit
+        # summary()-compatible `item_type` / `response` columns and attach
+        # dictionary attributes without needing the original besd_data object.
+        besd_dict  = prep$dict,
+        dem_dict   = prep$dem_dict,
+        outcome_label_map  = fit$meta$outcome_label_map  %||% list(),
+        outcome_parent_map = fit$meta$outcome_parent_map %||% list()
       ),
       row_ids = row_ids
     ),

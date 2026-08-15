@@ -30,7 +30,9 @@
 #' @param ... Unused; included for S3 compatibility.
 #'
 #' @return A tibble with columns including `country`, `item_id`, `response`,
-#'   `pct`, `lcl`, `ucl`, and metadata columns from the item dictionary. If
+#'   `pct`, `lcl`, `ucl`, `estimator` (always `"design"` here; see
+#'   [besd_poststratify()], which emits the same contract with `"mrp"`), and
+#'   metadata columns from the item dictionary. If
 #'   `include_demographics = TRUE`, a demographics tibble is attached as an
 #'   attribute (see `besd_demographics()`).
 #' @export
@@ -258,7 +260,8 @@ summary.besd_data <- function(object,
     return(tibble::tibble(
       country = cty, item_id = item_id, item_type = item_type,
       response = empty_resp, n = 0L,
-      pct = NA_real_, lcl = NA_real_, ucl = NA_real_
+      pct = NA_real_, lcl = NA_real_, ucl = NA_real_,
+      estimator = "design"
     ))
   }
 
@@ -333,7 +336,8 @@ summary.besd_data <- function(object,
       n         = n,
       pct       = pct,
       lcl       = lcl,
-      ucl       = ucl
+      ucl       = ucl,
+      estimator = "design"
     )
   }))
 }

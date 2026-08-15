@@ -28,8 +28,8 @@
 #'   output rows. Default `"Overall"`.
 #' @param post_probs Logical. If `TRUE`, the return value becomes a named list
 #'   with two elements: `estimates` (the usual `besd_poststrat` tibble) and
-#'   `post_probs` (a tibble with the same grouping columns, `outcome`, and
-#'   `category`, plus a `draws` list-column containing the full vector of
+#'   `post_probs` (a tibble with the same grouping columns, `item_id` and
+#'   `response`, plus a `draws` list-column containing the full vector of
 #'   poststratified posterior draws for each row). The `post_probs` tibble
 #'   respects the same `by` and `overall` grouping as `estimates`. Default
 #'   `FALSE`.
@@ -42,21 +42,43 @@
 #' upstream model contains context-specific predictors; [besd_poststrat_frame()]
 #' will raise an error in that case. See its documentation for details.
 #'
+#' @section Output contract:
+#'   The returned table follows the same column contract as
+#'   [summary.besd_data()], so poststratified estimates are drop-in compatible
+#'   with `plot_besd_bars()`, `plot_besd_spider()`, `plot_besd_ranked()` and the
+#'   BeSD Explorer. Specifically:
+#'   \itemize{
+#'     \item the geography column is named `country` regardless of what
+#'       `country_col` was called in [as_besd()];
+#'     \item items are reported as `item_id` / `item_type` / `response` rather
+#'       than `outcome` / `category`. Binary outcomes take the dictionary
+#'       top-box label (identical to `summary(combine_top = TRUE)`), and
+#'       multichoice sub-outcomes are folded back onto their parent `item_id`
+#'       with one row per level;
+#'     \item estimates are `pct` / `lcl` / `ucl` on the 0--100 scale;
+#'     \item `n` is `NA` (poststratified estimates carry no survey sample size)
+#'       and `estimator` is `"mrp"`.
+#'   }
+#'   The object carries both the `besd_poststrat` and `besd_summary_tbl`
+#'   classes, plus `besd_dict` / `dem_dict` attributes.
+#'
 #' @return When `post_probs = FALSE` (default): a `besd_poststrat` tibble with
-#'   columns: grouping columns (country and any `by` variables with
-#'   human-readable labels), `outcome`, `estimate`, `lower`, `upper`. For
-#'   ordinal outcomes a `category` column is also included. `lower` and `upper`
-#'   are `NA` for frequentist models. When `overall = TRUE`, national rows are
-#'   appended with the country column set to `overall_label`.
+#'   columns `country`, any `by` variables (with human-readable labels),
+#'   `item_id`, `item_type`, `response`, `n`, `pct`, `lcl`, `ucl`, `estimator`.
+#'   `lcl` and `ucl` are `NA` for frequentist models. When `overall = TRUE`,
+#'   national rows are appended with the `country` column set to
+#'   `overall_label`.
 #'
 #'   When `post_probs = TRUE`: a named list with:
 #'   \describe{
 #'     \item{`estimates`}{The `besd_poststrat` tibble described above.}
-#'     \item{`post_probs`}{A tibble with the same grouping columns, `outcome`,
-#'       and (for ordinal outcomes) `category`, plus a `draws` list-column.
-#'       Each element of `draws` is a numeric vector of length `n_draws`
-#'       containing the full distribution of poststratified posterior
-#'       probabilities for that group × outcome (× category).}
+#'     \item{`post_probs`}{A tibble with the same grouping columns, `item_id`
+#'       and `response`, plus a `draws` list-column. Each element of `draws` is
+#'       a numeric vector of length `n_draws` containing the full distribution
+#'       of poststratified posterior probabilities for that group × item ×
+#'       response. Draws remain on the 0--1 probability scale (unlike `pct`),
+#'       because they are intended for further arithmetic such as collapsing
+#'       top-box categories before summarising.}
 #'   }
 #'
 #' @seealso [besd_poststrat_frame()], [besd_fitted_probs()]
@@ -86,11 +108,19 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   y_type      <- fitted$meta$y_type
   outcomes    <- fitted$meta$outcomes
 
+  # Dictionaries carried through besd_fitted_probs(); used to label binary
+  # outcomes and to populate item_type, so output matches summary.besd_data().
+  besd_dict  <- fitted$meta$besd_dict
+  dem_dict   <- fitted$meta$dem_dict
+  label_map  <- fitted$meta$outcome_label_map  %||% list()
+  parent_map <- fitted$meta$outcome_parent_map %||% list()
+  item_meta  <- .ps_item_meta(outcomes, besd_dict, label_map, parent_map)
+
   # Country-level pass: group by country + by
   groups <- .ps_group_indices(poststrat_frame, c(country_col, by))
   result <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
                            country_col, NULL, conf_level, engine, y_type,
-                           post_probs)
+                           post_probs, item_meta)
   rows      <- result$rows
   draw_rows <- result$draw_rows
 
@@ -99,33 +129,90 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
     national_groups <- .ps_group_indices(poststrat_frame, by)
     nat_result <- .ps_run_groups(national_groups, outcomes, fitted, pop,
                                  level_map, country_col, overall_label,
-                                 conf_level, engine, y_type, post_probs)
+                                 conf_level, engine, y_type, post_probs,
+                                 item_meta)
     rows      <- c(rows, nat_result$rows)
     draw_rows <- c(draw_rows, nat_result$draw_rows)
   }
 
   if (!length(rows)) {
-    estimates <- structure(
-      tibble::tibble(outcome = character(), category = character(),
-                     estimate = numeric(), lower = numeric(), upper = numeric()),
-      class = c("besd_poststrat", "tbl_df", "tbl", "data.frame")
+    estimates <- .ps_finalise(
+      tibble::tibble(country = character(), item_id = character(),
+                     item_type = character(), response = character(),
+                     n = integer(), pct = numeric(), lcl = numeric(),
+                     ucl = numeric(), estimator = character()),
+      besd_dict, dem_dict
     )
     if (!post_probs) return(estimates)
     return(list(estimates = estimates,
-                post_probs = tibble::tibble(outcome = character(),
-                                            category = character(),
+                post_probs = tibble::tibble(country = character(),
+                                            item_id = character(),
+                                            response = character(),
                                             draws = list())))
   }
 
-  estimates <- dplyr::bind_rows(rows)
-  if (y_type == "binary") estimates$category <- NULL
-  estimates <- structure(estimates, class = c("besd_poststrat", class(estimates)))
+  estimates <- .ps_finalise(dplyr::bind_rows(rows), besd_dict, dem_dict)
 
   if (!post_probs) return(estimates)
 
-  pp <- dplyr::bind_rows(draw_rows)
-  if (y_type == "binary") pp$category <- NULL
-  list(estimates = estimates, post_probs = pp)
+  list(estimates = estimates, post_probs = dplyr::bind_rows(draw_rows))
+}
+
+
+# Resolve per-outcome metadata once, up front. Returns a named list keyed by
+# model outcome name, each element giving the item_id, item_type and response
+# label to report. Multichoice outcomes were expanded by besd_regress() into
+# one binary sub-outcome per level; those are folded back onto the parent
+# item_id with the level as the response, so the result matches the layout of
+# summary.besd_data(). Plain binary outcomes take the dictionary top-box label,
+# which is identical to what summary(combine_top = TRUE) emits.
+.ps_item_meta <- function(outcomes, besd_dict, label_map, parent_map) {
+  stats::setNames(lapply(outcomes, function(yy) {
+    parent <- parent_map[[yy]] %||% yy
+    idx    <- if (!is.null(besd_dict)) match(parent, besd_dict$item_id) else NA_integer_
+
+    item_type <- if (!is.na(idx)) besd_dict$item_type[[idx]] else NA_character_
+
+    response <- if (!is.null(label_map[[yy]])) {
+      # multichoice sub-outcome: the level it represents
+      label_map[[yy]]
+    } else if (!is.na(idx)) {
+      tl <- besd_dict$toplevs[[idx]]
+      if (length(tl) && !all(is.na(tl))) paste(tl, collapse = ", ") else parent
+    } else {
+      parent
+    }
+
+    list(item_id = parent, item_type = item_type %||% NA_character_,
+         response = response)
+  }), outcomes)
+}
+
+
+# Apply the besd_summary_tbl contract to an assembled poststratification table:
+# stable column order, both classes, and the dictionary attributes that
+# plot_besd_*() and the Explorer read.
+.ps_finalise <- function(x, besd_dict, dem_dict) {
+  lead <- c("country", "item_id", "item_type", "response")
+  lead <- intersect(lead, names(x))
+  tail_cols <- c("n", "pct", "lcl", "ucl", "estimator")
+  mid  <- setdiff(names(x), c(lead, tail_cols))   # any `by` grouping columns
+  x    <- x[, c(lead, mid, intersect(tail_cols, names(x))), drop = FALSE]
+
+  # Join the item dictionary metadata columns that summary.besd_data() carries.
+  # plot_besd_bars() / plot_besd_spider() read these directly off the table, so
+  # the dictionary attribute alone is not enough for drop-in compatibility.
+  meta_cols <- c("domain", "question", "question_short")
+  if (!is.null(besd_dict) && all(meta_cols %in% names(besd_dict))) {
+    idx <- match(x$item_id, besd_dict$item_id)
+    for (nm in meta_cols) x[[nm]] <- besd_dict[[nm]][idx]
+  }
+
+  x <- structure(x, class = unique(c("besd_poststrat", "besd_summary_tbl",
+                                     class(tibble::as_tibble(x)))))
+  attr(x, "besd_dict") <- besd_dict
+  attr(x, "dem_dict")  <- dem_dict
+  x
 }
 
 
@@ -162,7 +249,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 #   this value (and placed first), marking rows as national-level estimates.
 .ps_run_groups <- function(groups, outcomes, fitted, pop, level_map,
                            country_col, overall_label, conf_level, engine,
-                           y_type, post_probs) {
+                           y_type, post_probs, item_meta) {
   rows      <- list()
   draw_rows <- list()
 
@@ -170,6 +257,8 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
     draws_arr <- fitted$draws[[yy]]
     if (is.null(draws_arr)) next
     cats <- fitted$meta$categories[[yy]]
+    im   <- item_meta[[yy]] %||% list(item_id = yy, item_type = NA_character_,
+                                      response = yy)
 
     for (grp in groups) {
       idx <- grp$idx
@@ -183,16 +272,20 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
         group_vals <- group_vals[, c(country_col, setdiff(names(group_vals), country_col)),
                                  drop = FALSE]
       }
+      # Report the geography under the literal name `country`, matching
+      # summary.besd_data(), regardless of what country_col was called.
+      if (country_col %in% names(group_vals))
+        names(group_vals)[match(country_col, names(group_vals))] <- "country"
 
       if (y_type == "binary") {
         ps_draws <- .ps_weighted_draws(draws_arr[, idx, drop = FALSE], w_c)
         summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
         rows[[length(rows) + 1L]] <- .ps_build_row(
-          yy, group_vals, NA_character_, summ$estimate, summ$lower, summ$upper
+          im, group_vals, im$response, summ$estimate, summ$lower, summ$upper
         )
         if (post_probs)
           draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
-            yy, group_vals, NA_character_, ps_draws
+            im, group_vals, im$response, ps_draws
           )
       } else {
         for (k in seq_along(cats)) {
@@ -201,11 +294,11 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
           ps_draws <- .ps_weighted_draws(draws_k, w_c)
           summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
           rows[[length(rows) + 1L]] <- .ps_build_row(
-            yy, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
+            im, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
           )
           if (post_probs)
             draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
-              yy, group_vals, cats[[k]], ps_draws
+              im, group_vals, cats[[k]], ps_draws
             )
         }
       }
@@ -253,17 +346,23 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 }
 
 
-# Build a single summary output row as a tibble, with group columns placed
-# first followed by outcome, category, and the three estimate columns.
-.ps_build_row <- function(outcome, group_vals, category, estimate, lower, upper) {
+# Build a single summary output row as a tibble, matching the column contract
+# of summary.besd_data(): group columns first, then item_id / item_type /
+# response, then n / pct / lcl / ucl. Estimates are rescaled from probabilities
+# to percentages (0-100) to match the survey path. `n` is NA because
+# poststratified estimates have no survey sample size attached.
+.ps_build_row <- function(item_meta, group_vals, response, estimate, lower, upper) {
   dplyr::bind_cols(
     group_vals,
     tibble::tibble(
-      outcome  = outcome,
-      category = category,
-      estimate = as.numeric(estimate),
-      lower    = as.numeric(lower),
-      upper    = as.numeric(upper)
+      item_id   = item_meta$item_id,
+      item_type = item_meta$item_type,
+      response  = response,
+      n         = NA_integer_,
+      pct       = 100 * as.numeric(estimate),
+      lcl       = 100 * as.numeric(lower),
+      ucl       = 100 * as.numeric(upper),
+      estimator = "mrp"
     )
   )
 }
@@ -271,12 +370,14 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
 # Build a single posterior-draws output row as a tibble. Mirrors .ps_build_row
 # but stores the full ps_draws vector in a list-column instead of summarising.
-.ps_build_draw_row <- function(outcome, group_vals, category, ps_draws) {
+# Draws stay on the 0-1 probability scale: they are intended for further
+# arithmetic (e.g. collapsing top-box categories) before any rescaling.
+.ps_build_draw_row <- function(item_meta, group_vals, response, ps_draws) {
   dplyr::bind_cols(
     group_vals,
     tibble::tibble(
-      outcome  = outcome,
-      category = category,
+      item_id  = item_meta$item_id,
+      response = response,
       draws    = list(as.numeric(ps_draws))
     )
   )

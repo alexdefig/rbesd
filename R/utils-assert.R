@@ -36,6 +36,16 @@
          call. = FALSE)
   }
   
+  # `estimator` is soft: objects saved before it was introduced still pass, and
+  # consumers should default to "design" when it is absent.
+  if ("estimator" %in% names(x)) {
+    bad <- setdiff(unique(stats::na.omit(x$estimator)), c("design", "mrp"))
+    if (length(bad)) {
+      warning(fn_tag, "Unrecognised estimator value(s): ",
+              paste(bad, collapse = ", "), ".", call. = FALSE)
+    }
+  }
+
   # Class tag (warn, not error — easy to lose after dplyr ops)
   if (!"besd_summary_tbl" %in% class(x)) {
     warning(fn_tag,
