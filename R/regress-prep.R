@@ -23,6 +23,9 @@
 #' @param min_n_context Rare-level threshold for context predictors (default
 #'   `10L`). Observations in levels with fewer than this many observations
 #'   within a country are recoded to `NA` before fitting.
+#' @param warn_missingness If `TRUE` (default), warn when predictor-only
+#'   complete-case deletion exceeds the missingness threshold. `besd_regress()`
+#'   disables this and emits its own outcome-aware missingness warning.
 #'
 #' @return A `besd_prep` object (a named list with class `"besd_prep"`)
 #'   containing the encoded data frame, predictor metadata, level maps,
@@ -36,7 +39,8 @@ besd_prepare <- function(x,
                          random_slopes = FALSE,
                          correlated_re = FALSE,
                          ref_levels    = list(),
-                         min_n_context = 10L) {
+                         min_n_context = 10L,
+                         warn_missingness = TRUE) {
   
   .assert_besd(x)
   
@@ -75,11 +79,13 @@ besd_prepare <- function(x,
                                    global_ref = TRUE)
     df <- prep_preds$df
     
-    .warn_missingness(df,
-                      vars        = preds_common,
-                      country_col = country_col,
-                      threshold   = 0.05,
-                      context     = "by_country")
+    if (isTRUE(warn_missingness)) {
+      .warn_missingness(df,
+                        vars        = preds_common,
+                        country_col = country_col,
+                        threshold   = 0.05,
+                        context     = "by_country")
+    }
     
     countries                 <- sort(unique(as.character(df[[country_col]])))
     level_map                 <- prep_preds$level_map
@@ -111,11 +117,13 @@ besd_prepare <- function(x,
                                           isTRUE(random_slopes) &&
                                           !isTRUE(correlated_re))
     
-    .warn_missingness(df,
-                      vars        = preds_common,
-                      country_col = country_col,
-                      threshold   = 0.05,
-                      context     = "multilevel")
+    if (isTRUE(warn_missingness)) {
+      .warn_missingness(df,
+                        vars        = preds_common,
+                        country_col = country_col,
+                        threshold   = 0.05,
+                        context     = "multilevel")
+    }
     
     if (length(preds_context)) {
       .inform_context_coverage(df, preds_context, country_col)

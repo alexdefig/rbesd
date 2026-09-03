@@ -13,7 +13,8 @@ besd_prepare(
   random_slopes = FALSE,
   correlated_re = FALSE,
   ref_levels = list(),
-  min_n_context = 10L
+  min_n_context = 10L,
+  warn_missingness = TRUE
 )
 }
 \arguments{
@@ -40,6 +41,10 @@ between random effects.}
 \item{min_n_context}{Rare-level threshold for context predictors (default
 \code{10L}). Observations in levels with fewer than this many observations
 within a country are recoded to \code{NA} before fitting.}
+
+\item{warn_missingness}{If \code{TRUE} (default), warn when predictor-only
+complete-case deletion exceeds the missingness threshold. \code{besd_regress()}
+disables this and emits its own outcome-aware missingness warning.}
 }
 \value{
 A \code{besd_prep} object (a named list with class \code{"besd_prep"})

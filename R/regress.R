@@ -90,7 +90,8 @@ besd_regress <- function(x,
     random_slopes = random_slopes,
     correlated_re = correlated_re,
     ref_levels    = ref_levels,
-    min_n_context = min_n_context
+    min_n_context = min_n_context,
+    warn_missingness = FALSE
   )
   
   dict        <- info$besd_dict
