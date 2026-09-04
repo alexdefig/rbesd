@@ -613,7 +613,7 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
 #    e.g. "dem_gen__02", "dem_gen__03" from column "dem_gen".
 #  - All other columns (continuous): single entry keyed by column name.
 .build_coef_lookup <- function(prep, fitted_terms) {
-  dem_dict  <- prep$dem_dict  %||% NULL
+  dem_dict  <- .pred_label_dict(prep)
   term_map  <- prep$term_map  %||% list()
   level_map <- prep$level_map %||% list()
   lookup    <- list()
@@ -648,6 +648,17 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
     }
   }
   lookup
+}
+
+# Combined predictor-label dictionary. Predictors may be demographics or BeSD
+# items; both dictionaries share one schema (item_id + question_short), so they
+# are row-bound. Demographics come first so a dem item wins on any id collision.
+.pred_label_dict <- function(prep) {
+  dem <- prep$dem_dict %||% NULL
+  bsd <- prep$dict     %||% NULL
+  if (is.null(dem)) return(bsd)
+  if (is.null(bsd)) return(dem)
+  dplyr::bind_rows(tibble::as_tibble(dem), tibble::as_tibble(bsd))
 }
 
 # Resolve a variable id (e.g. "dem_gen") to a human-readable label by looking
@@ -866,8 +877,8 @@ tidy_model <- function(fit, conf_level = 0.95, include_random = FALSE,
   
   is_bc <- prep$scope == "by_country"
   rows  <- c(
-    .baselines_common(prep, prep$dem_dict, is_bc),
-    if (!is_bc) .baselines_context(prep, prep$dem_dict) else list()
+    .baselines_common(prep, .pred_label_dict(prep), is_bc),
+    if (!is_bc) .baselines_context(prep, .pred_label_dict(prep)) else list()
   )
   if (!length(rows)) return(.empty_baseline_tbl())
   dplyr::bind_rows(rows)

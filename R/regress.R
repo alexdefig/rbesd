@@ -5,6 +5,10 @@
 #' @param x A `besd_data` object.
 #' @param outcome One or more BeSD `item_id` strings.
 #' @param predictors Character vector (by_country) or list(common, context) (multilevel).
+#'   Predictors may be demographic variables **or** BeSD `item_id`s, so item-on-item
+#'   models such as `tf_benefits ~ tf_safety` are supported. `multichoice` items
+#'   cannot be used as predictors (they pack several responses into one column);
+#'   derive a binary indicator column first.
 #' @param scope "by_country" or "multilevel".
 #' @param engine "frequentist" or "bayes".
 #' @param ref Reference rule: "mode" or "first".
@@ -12,7 +16,11 @@
 #' @param correlated_re If TRUE (multilevel Bayes), estimate correlations between
 #'   random effects.
 #' @param ref_levels Optional named list of explicit reference labels (multilevel
-#'   common predictors only).
+#'   common predictors only). Ordinal BeSD items used as predictors are dummy-coded
+#'   against a reference level rather than fitted with polynomial contrasts, and
+#'   `ref = "mode"` selects the modal level as that reference. To compare against the
+#'   bottom of the scale instead, name it explicitly, e.g.
+#'   `ref_levels = list(tf_safety = "Not at all safe")`.
 #' @param min_n_context Rare level threshold for context predictors (default 10).
 #' @param ... Passed to engine (glm/clm/brm/etc).
 #' @section Missing data and complete-case analysis:
@@ -35,6 +43,11 @@
 #' After examining missing data with [besd_missing_summary()] consider manually 
 #' recoding rare levels before calling [as_besd()].
 #' 
+#' @section Poststratification:
+#' [besd_poststratify()] requires every predictor to exist in the poststratification
+#' frame. A model whose predictors include BeSD items therefore cannot be
+#' poststratified; the model fit and [tidy_model()] output are unaffected.
+#'
 #' @note **Survey weights are not currently supported.** If `x` was created with
 #'   a `weight_col`, that column is stored in the object but ignored by `besd_regress()`.
 #'   All models are fitted on unweighted data. This is a known limitation; weighted
@@ -66,6 +79,45 @@ besd_regress <- function(x,
     .stopf("`outcome` must be a non-empty character vector of BeSD `item_id` strings.")
   }
   
+  # Validate predictors. Predictors may be demographics or BeSD `item_id`s, but
+  # multichoice items are packed multi-response strings and cannot be used, and
+  # an outcome must not also appear on the right-hand side.
+  preds_flat <- if (is.list(predictors)) {
+    unique(c(predictors$common %||% character(), predictors$context %||% character()))
+  } else {
+    as.character(predictors)
+  }
+  preds_flat <- preds_flat[!is.na(preds_flat) & nzchar(preds_flat)]
+
+  clash <- intersect(outcome, preds_flat)
+  if (length(clash)) {
+    .stopf(
+      "Item(s) %s appear as both `outcome` and `predictors`. A variable cannot predict itself.",
+      .pastec(clash)
+    )
+  }
+
+  mc_preds <- intersect(preds_flat, info$besd_items)
+  mc_preds <- mc_preds[vapply(mc_preds,
+                              function(p) .item_type(info$besd_dict, p) == "multichoice",
+                              logical(1))]
+  if (length(mc_preds)) {
+    .stopf(
+      paste0(
+        "Multichoice item(s) %s cannot be used as predictors: they store several ",
+        "responses packed into one column. Derive a binary indicator column for the ",
+        "response option(s) of interest and use that instead."
+      ),
+      .pastec(mc_preds)
+    )
+  }
+
+  # Missing-token guard for predictors. Must run on the raw data: after
+  # besd_prepare() the predictor levels are opaque `__01` codes.
+  .check_no_missing_token_levels(dplyr::as_tibble(x), character(0), preds_flat,
+                                 info$besd_dict, info$meta,
+                                 include_ordered = TRUE)
+
   # Warn if the object carries a weight column — it is not used in regression.
   if (!is.null(info$weight_col) && nzchar(info$weight_col %||% "")) {
     warning(

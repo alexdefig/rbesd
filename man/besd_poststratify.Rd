@@ -40,28 +40,30 @@ output rows. Default \code{"Overall"}.}
 
 \item{post_probs}{Logical. If \code{TRUE}, the return value becomes a named list
 with two elements: \code{estimates} (the usual \code{besd_poststrat} tibble) and
-\code{post_probs} (a tibble with the same grouping columns, \code{outcome}, and
-\code{category}, plus a \code{draws} list-column containing the full vector of
+\code{post_probs} (a tibble with the same grouping columns, \code{item_id} and
+\code{response}, plus a \code{draws} list-column containing the full vector of
 poststratified posterior draws for each row). The \code{post_probs} tibble
 respects the same \code{by} and \code{overall} grouping as \code{estimates}. Default
 \code{FALSE}.}
 }
 \value{
 When \code{post_probs = FALSE} (default): a \code{besd_poststrat} tibble with
-columns: grouping columns (country and any \code{by} variables with
-human-readable labels), \code{outcome}, \code{estimate}, \code{lower}, \code{upper}. For
-ordinal outcomes a \code{category} column is also included. \code{lower} and \code{upper}
-are \code{NA} for frequentist models. When \code{overall = TRUE}, national rows are
-appended with the country column set to \code{overall_label}.
+columns \code{country}, any \code{by} variables (with human-readable labels),
+\code{item_id}, \code{item_type}, \code{response}, \code{n}, \code{pct}, \code{lcl}, \code{ucl}, \code{estimator}.
+\code{lcl} and \code{ucl} are \code{NA} for frequentist models. When \code{overall = TRUE},
+national rows are appended with the \code{country} column set to
+\code{overall_label}.
 
 When \code{post_probs = TRUE}: a named list with:
 \describe{
 \item{\code{estimates}}{The \code{besd_poststrat} tibble described above.}
-\item{\code{post_probs}}{A tibble with the same grouping columns, \code{outcome},
-and (for ordinal outcomes) \code{category}, plus a \code{draws} list-column.
-Each element of \code{draws} is a numeric vector of length \code{n_draws}
-containing the full distribution of poststratified posterior
-probabilities for that group × outcome (× category).}
+\item{\code{post_probs}}{A tibble with the same grouping columns, \code{item_id}
+and \code{response}, plus a \code{draws} list-column. Each element of \code{draws} is
+a numeric vector of length \code{n_draws} containing the full distribution
+of poststratified posterior probabilities for that group × item ×
+response. Draws remain on the 0--1 probability scale (unlike \code{pct}),
+because they are intended for further arithmetic such as collapsing
+top-box categories before summarising.}
 }
 }
 \description{
@@ -80,6 +82,28 @@ grouping column corresponds to the first administrative unit (e.g. region
 or state). Multi-country poststratification is not supported when the
 upstream model contains context-specific predictors; \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}}
 will raise an error in that case. See its documentation for details.
+}
+
+\section{Output contract}{
+
+The returned table follows the same column contract as
+\code{\link[=summary.besd_data]{summary.besd_data()}}, so poststratified estimates are drop-in compatible
+with \code{plot_besd_bars()}, \code{plot_besd_spider()}, \code{plot_besd_ranked()} and the
+BeSD Explorer. Specifically:
+\itemize{
+\item the geography column is named \code{country} regardless of what
+\code{country_col} was called in \code{\link[=as_besd]{as_besd()}};
+\item items are reported as \code{item_id} / \code{item_type} / \code{response} rather
+than \code{outcome} / \code{category}. Binary outcomes take the dictionary
+top-box label (identical to \code{summary(combine_top = TRUE)}), and
+multichoice sub-outcomes are folded back onto their parent \code{item_id}
+with one row per level;
+\item estimates are \code{pct} / \code{lcl} / \code{ucl} on the 0--100 scale;
+\item \code{n} is \code{NA} (poststratified estimates carry no survey sample size)
+and \code{estimator} is \code{"mrp"}.
+}
+The object carries both the \code{besd_poststrat} and \code{besd_summary_tbl}
+classes, plus \code{besd_dict} / \code{dem_dict} attributes.
 }
 
 \seealso{

@@ -46,7 +46,9 @@ convergence warnings (used by \code{\link[=besd_summary_by]{besd_summary_by()}})
 }
 \value{
 A tibble with columns including \code{country}, \code{item_id}, \code{response},
-\code{pct}, \code{lcl}, \code{ucl}, and metadata columns from the item dictionary. If
+\code{pct}, \code{lcl}, \code{ucl}, \code{estimator} (always \code{"design"} here; see
+\code{\link[=besd_poststratify]{besd_poststratify()}}, which emits the same contract with \code{"mrp"}), and
+metadata columns from the item dictionary. If
 \code{include_demographics = TRUE}, a demographics tibble is attached as an
 attribute (see \code{besd_demographics()}).
 }

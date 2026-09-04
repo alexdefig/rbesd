@@ -186,6 +186,12 @@ besd_prepare <- function(x,
       factor(df[[nm]])
     } else if (is.logical(df[[nm]])) {
       as.integer(df[[nm]])
+    } else if (is.ordered(df[[nm]])) {
+      # Ordinal BeSD items are stored as ordered factors, which R would fit with
+      # polynomial contrasts (`item.L`, `item.Q`, ...). Drop the ordering so they
+      # are dummy-coded against a reference level like every other categorical
+      # predictor, and so they decode through level_map / term_map.
+      factor(df[[nm]], ordered = FALSE)
     } else {
       df[[nm]]
     }
@@ -282,7 +288,7 @@ besd_prepare <- function(x,
   # Apply explicit reference overrides (common predictors only)
   for (nm in intersect(names(ref_levels), preds_common)) {
     v          <- df[[nm]]
-    if (!is.factor(v) || is.ordered(v)) next
+    if (!is.factor(v)) next
     want_label <- ref_levels[[nm]]
     if (!is.character(want_label) || length(want_label) != 1L) next
     mp         <- prep_common$level_map[[nm]]
@@ -290,7 +296,12 @@ besd_prepare <- function(x,
     idx        <- match(want_label, mp$label)
     if (!is.na(idx)) {
       want_code <- mp$code[[idx]]
-      if (want_code %in% levels(v)) df[[nm]] <- stats::relevel(v, ref = want_code)
+      if (want_code %in% levels(v)) {
+        df[[nm]] <- stats::relevel(v, ref = want_code)
+        # Keep ref_code in step with the override so the baseline reported by
+        # tidy_model() matches the level the model actually contrasts against.
+        prep_common$ref_code[[nm]] <- as.character(want_code)
+      }
     }
   }
   
@@ -472,8 +483,12 @@ besd_prepare <- function(x,
 # Detection: a factor column whose levels include anything not in dict$levels
 # for that item. Only checks columns that are in the dictionary; dem predictors
 # not in besd_dict are looked up in dem_dict if present.
+# `include_ordered = TRUE` also checks ordered factors (ordinal items). Used for
+# predictors, which are dummy-coded by .prep_predictors() and so would turn a
+# retained missing token into a real level.
 .check_no_missing_token_levels <- function(df, outcome, predictors, dict,
-                                           meta = NULL) {
+                                           meta = NULL,
+                                           include_ordered = FALSE) {
   all_preds <- if (is.list(predictors)) {
     unique(c(predictors$common %||% character(), predictors$context %||% character()))
   } else {
@@ -489,7 +504,8 @@ besd_prepare <- function(x,
   bad <- character()
   for (col in cols_to_check) {
     v <- df[[col]]
-    if (!is.factor(v) || is.ordered(v)) next
+    if (!is.factor(v)) next
+    if (is.ordered(v) && !isTRUE(include_ordered)) next
     expected <- dict_levels[[col]]
     if (is.null(expected)) next          # not in dict — skip
     extra <- setdiff(levels(v), expected)

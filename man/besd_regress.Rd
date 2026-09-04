@@ -23,7 +23,11 @@ besd_regress(
 
 \item{outcome}{One or more BeSD \code{item_id} strings.}
 
-\item{predictors}{Character vector (by_country) or list(common, context) (multilevel).}
+\item{predictors}{Character vector (by_country) or list(common, context) (multilevel).
+Predictors may be demographic variables \strong{or} BeSD \code{item_id}s, so item-on-item
+models such as \code{tf_benefits ~ tf_safety} are supported. \code{multichoice} items
+cannot be used as predictors (they pack several responses into one column);
+derive a binary indicator column first.}
 
 \item{scope}{"by_country" or "multilevel".}
 
@@ -37,7 +41,11 @@ besd_regress(
 random effects.}
 
 \item{ref_levels}{Optional named list of explicit reference labels (multilevel
-common predictors only).}
+common predictors only). Ordinal BeSD items used as predictors are dummy-coded
+against a reference level rather than fitted with polynomial contrasts, and
+\code{ref = "mode"} selects the modal level as that reference. To compare against the
+bottom of the scale instead, name it explicitly, e.g.
+\code{ref_levels = list(tf_safety = "Not at all safe")}.}
 
 \item{min_n_context}{Rare level threshold for context predictors (default 10).}
 
@@ -72,5 +80,12 @@ small cells will not cause convergence problems.
 
 After examining missing data with \code{\link[=besd_missing_summary]{besd_missing_summary()}} consider manually
 recoding rare levels before calling \code{\link[=as_besd]{as_besd()}}.
+}
+
+\section{Poststratification}{
+
+\code{\link[=besd_poststratify]{besd_poststratify()}} requires every predictor to exist in the poststratification
+frame. A model whose predictors include BeSD items therefore cannot be
+poststratified; the model fit and \code{\link[=tidy_model]{tidy_model()}} output are unaffected.
 }
 
