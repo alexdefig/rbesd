@@ -33,6 +33,16 @@
 #'   poststratified posterior draws for each row). The `post_probs` tibble
 #'   respects the same `by` and `overall` grouping as `estimates`. Default
 #'   `FALSE`.
+#' @param combine_top Logical. If `TRUE`, collapse the top-box levels
+#'   (`toplevs` from the item dictionary) into a single combined response per
+#'   item, mirroring `summary(x, combine_top = TRUE)`. For ordinal and
+#'   categorical outcomes the posterior probability mass of the top-box
+#'   categories is summed **within each draw** before summarising, so credible
+#'   intervals are correct for the combined quantity. Binary outcomes are
+#'   already reported as their top-box label and are unaffected. Multichoice
+#'   items are dropped, as they are by [summary.besd_data()]. Requires
+#'   non-empty `toplevs` in the dictionary for every ordinal/categorical
+#'   outcome. Default `FALSE`.
 #'
 #' @section Sub-national use and context-predictor limitation:
 #' The supported use of poststratification in rbesd is **sub-national
@@ -54,7 +64,9 @@
 #'       than `outcome` / `category`. Binary outcomes take the dictionary
 #'       top-box label (identical to `summary(combine_top = TRUE)`), and
 #'       multichoice sub-outcomes are folded back onto their parent `item_id`
-#'       with one row per level;
+#'       with one row per level. With `combine_top = TRUE`, ordinal and
+#'       categorical items collapse to a single top-box row per item, labelled
+#'       the same way;
 #'     \item estimates are `pct` / `lcl` / `ucl` on the 0--100 scale;
 #'     \item `n` is `NA` (poststratified estimates carry no survey sample size)
 #'       and `estimator` is `"mrp"`.
@@ -85,7 +97,8 @@
 #' @export
 besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
                               conf_level = 0.95, overall = FALSE,
-                              overall_label = "Overall", post_probs = FALSE) {
+                              overall_label = "Overall", post_probs = FALSE,
+                              combine_top = FALSE) {
 
   .assert_besd_fitted(fitted)
   .assert_besd_poststrat_frame(poststrat_frame)
@@ -105,8 +118,17 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   level_map   <- attr(poststrat_frame, "level_map")
   pop         <- poststrat_frame[[pop_col]]
   engine      <- fitted$meta$engine
-  y_type      <- fitted$meta$y_type
   outcomes    <- fitted$meta$outcomes
+
+  # Per-outcome types. `meta$y_type` is only the first outcome's type; using it
+  # for every outcome mis-shapes the draws whenever one fit mixes binary and
+  # ordinal outcomes. Fall back to it only for outcomes missing from `y_types`.
+  y_types <- stats::setNames(
+    lapply(outcomes, function(yy) {
+      (fitted$meta$y_types %||% list())[[yy]] %||% fitted$meta$y_type %||% "binary"
+    }),
+    outcomes
+  )
 
   # Dictionaries carried through besd_fitted_probs(); used to label binary
   # outcomes and to populate item_type, so output matches summary.besd_data().
@@ -116,11 +138,22 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   parent_map <- fitted$meta$outcome_parent_map %||% list()
   item_meta  <- .ps_item_meta(outcomes, besd_dict, label_map, parent_map)
 
+  if (isTRUE(combine_top)) {
+    # Multichoice sub-outcomes have no top box; summary.besd_data() drops the
+    # item entirely under combine_top, so do the same here.
+    outcomes <- outcomes[vapply(outcomes,
+                                function(yy) is.null(label_map[[yy]]),
+                                logical(1))]
+    .ps_assert_toplevs(outcomes, y_types, item_meta)
+    if (!length(outcomes))
+      .stopf("`combine_top = TRUE` left no outcomes to poststratify (all multichoice).")
+  }
+
   # Country-level pass: group by country + by
   groups <- .ps_group_indices(poststrat_frame, c(country_col, by))
   result <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
-                           country_col, NULL, conf_level, engine, y_type,
-                           post_probs, item_meta)
+                           country_col, NULL, conf_level, engine, y_types,
+                           post_probs, item_meta, combine_top)
   rows      <- result$rows
   draw_rows <- result$draw_rows
 
@@ -129,8 +162,8 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
     national_groups <- .ps_group_indices(poststrat_frame, by)
     nat_result <- .ps_run_groups(national_groups, outcomes, fitted, pop,
                                  level_map, country_col, overall_label,
-                                 conf_level, engine, y_type, post_probs,
-                                 item_meta)
+                                 conf_level, engine, y_types, post_probs,
+                                 item_meta, combine_top)
     rows      <- c(rows, nat_result$rows)
     draw_rows <- c(draw_rows, nat_result$draw_rows)
   }
@@ -173,19 +206,57 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
     item_type <- if (!is.na(idx)) besd_dict$item_type[[idx]] else NA_character_
 
+    tl <- if (!is.na(idx)) besd_dict$toplevs[[idx]] else NULL
+    tl <- if (is.character(tl) && length(tl) && !any(is.na(tl))) tl else NULL
+
+    levs <- if (!is.na(idx) && "levels" %in% names(besd_dict)) {
+      as.character(besd_dict$levels[[idx]])
+    } else NULL
+
     response <- if (!is.null(label_map[[yy]])) {
       # multichoice sub-outcome: the level it represents
       label_map[[yy]]
-    } else if (!is.na(idx)) {
-      tl <- besd_dict$toplevs[[idx]]
-      if (length(tl) && !all(is.na(tl))) paste(tl, collapse = ", ") else parent
+    } else if (!is.null(tl)) {
+      paste(tl, collapse = ", ")
     } else {
       parent
     }
 
     list(item_id = parent, item_type = item_type %||% NA_character_,
-         response = response)
+         response = response, toplevs = tl, levels = levs)
   }), outcomes)
+}
+
+
+# Guard for combine_top: every non-binary outcome must have usable top-box
+# levels in the dictionary. Mirrors the check summary.besd_data() applies.
+.ps_assert_toplevs <- function(outcomes, y_types, item_meta) {
+  for (yy in outcomes) {
+    if ((y_types[[yy]] %||% "binary") == "binary") next
+    if (is.null(item_meta[[yy]]$toplevs))
+      .stopf("`combine_top = TRUE` requires non-empty `toplevs` in dict for `%s`.",
+             item_meta[[yy]]$item_id %||% yy)
+  }
+  invisible(TRUE)
+}
+
+
+# Resolve which slices of an ordinal draws array make up the top box. Matches
+# the model's category labels against the dictionary `toplevs` by label, and
+# falls back to positional matching against the dictionary `levels` for engines
+# that return positional labels ("1", "2", ...) rather than the factor levels.
+.ps_top_indices <- function(cats, im, item_id) {
+  k <- which(as.character(cats) %in% im$toplevs)
+  if (!length(k) && !is.null(im$levels)) {
+    pos <- match(im$toplevs, im$levels)
+    pos <- pos[!is.na(pos)]
+    k   <- pos[pos <= length(cats)]
+  }
+  if (!length(k))
+    .stopf(paste0("`combine_top = TRUE`: could not match `toplevs` (%s) to the ",
+                  "fitted response categories (%s) for `%s`."),
+           .pastec(im$toplevs), .pastec(as.character(cats)), item_id)
+  sort(unique(k))
 }
 
 
@@ -247,18 +318,27 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 #   draw_rows: posterior draw tibble rows (populated only when post_probs TRUE)
 # overall_label: if non-NULL, the country column is added to group_vals with
 #   this value (and placed first), marking rows as national-level estimates.
+# y_types: named list of per-outcome types. It must be consulted per outcome,
+#   not once for the whole call: a single besd_regress() fit can mix binary and
+#   ordinal outcomes, whose draws have different dimensionality.
 .ps_run_groups <- function(groups, outcomes, fitted, pop, level_map,
                            country_col, overall_label, conf_level, engine,
-                           y_type, post_probs, item_meta) {
+                           y_types, post_probs, item_meta, combine_top = FALSE) {
   rows      <- list()
   draw_rows <- list()
 
   for (yy in outcomes) {
     draws_arr <- fitted$draws[[yy]]
     if (is.null(draws_arr)) next
+    y_type <- y_types[[yy]] %||% "binary"
     cats <- fitted$meta$categories[[yy]]
     im   <- item_meta[[yy]] %||% list(item_id = yy, item_type = NA_character_,
                                       response = yy)
+
+    # Resolve the top-box slices once per outcome, not per group.
+    k_top <- if (isTRUE(combine_top) && y_type != "binary") {
+      .ps_top_indices(cats, im, yy)
+    } else NULL
 
     for (grp in groups) {
       idx <- grp$idx
@@ -287,10 +367,24 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
           draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
             im, group_vals, im$response, ps_draws
           )
+      } else if (!is.null(k_top)) {
+        # Top box: sum the probability mass of the top-box categories *within
+        # each draw* before summarising. Summarising each category separately
+        # and adding the results would be wrong, as medians and quantiles are
+        # not additive.
+        draws_k  <- .ps_collapse_cats(draws_arr, idx, k_top)
+        ps_draws <- .ps_weighted_draws(draws_k, w_c)
+        summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+        rows[[length(rows) + 1L]] <- .ps_build_row(
+          im, group_vals, im$response, summ$estimate, summ$lower, summ$upper
+        )
+        if (post_probs)
+          draw_rows[[length(draw_rows) + 1L]] <- .ps_build_draw_row(
+            im, group_vals, im$response, ps_draws
+          )
       } else {
         for (k in seq_along(cats)) {
-          slice    <- draws_arr[, idx, k, drop = FALSE]
-          draws_k  <- matrix(as.numeric(slice), nrow = dim(draws_arr)[[1L]])
+          draws_k  <- .ps_collapse_cats(draws_arr, idx, k)
           ps_draws <- .ps_weighted_draws(draws_k, w_c)
           summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
           rows[[length(rows) + 1L]] <- .ps_build_row(
@@ -306,6 +400,22 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   }
 
   list(rows = rows, draw_rows = draw_rows)
+}
+
+
+# Slice an ordinal draws array [n_draws x n_obs x n_k] down to the given cells
+# and categories, summing across the categories within each draw x cell.
+# Returns a [n_draws x length(idx)] matrix. With a single category this is just
+# the extracted slice.
+.ps_collapse_cats <- function(draws_arr, idx, k) {
+  n_draws <- dim(draws_arr)[[1L]]
+  if (length(k) == 1L)
+    return(matrix(as.numeric(draws_arr[, idx, k, drop = FALSE]), nrow = n_draws))
+  out <- matrix(0, nrow = n_draws, ncol = length(idx))
+  for (j in seq_along(k))
+    out <- out + matrix(as.numeric(draws_arr[, idx, k[[j]], drop = FALSE]),
+                        nrow = n_draws)
+  out
 }
 
 

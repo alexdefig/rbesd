@@ -1,6 +1,22 @@
 # rbesd (development version)
 
+## New features
+- `besd_poststratify()`: new `combine_top` argument, mirroring
+  `summary(x, combine_top = TRUE)`. Ordinal and categorical outcomes collapse
+  to a single top-box row per item, with the posterior probability mass of the
+  top-box categories summed within each draw before summarising, so credible
+  intervals are correct for the combined quantity. Binary outcomes already
+  carried the top-box label and are unchanged; multichoice items are dropped,
+  as they are by `summary()`.
+
 ## Bug fixes
+- `besd_poststratify()`: the outcome type was read once from `meta$y_type`
+  (the *first* outcome's type) and applied to every outcome, so a single
+  `besd_regress()` fit mixing binary and ordinal outcomes was poststratified
+  against the wrong draws layout. With an ordinal outcome first, binary
+  outcomes were silently dropped from the output; with a binary outcome first,
+  ordinal outcomes raised "incorrect number of dimensions". The per-outcome
+  `meta$y_types` is now consulted for each outcome.
 - `tidy_model()`: ordinal cutpoints from `clm()` (label-based `A|B` names) were
   misidentified as slopes, triggering spurious "could not be decoded" warnings.
   Cutpoints now appear in the tidy table with `variable = "(Cutpoint)"` and

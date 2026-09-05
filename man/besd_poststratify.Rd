@@ -11,7 +11,8 @@ besd_poststratify(
   conf_level = 0.95,
   overall = FALSE,
   overall_label = "Overall",
-  post_probs = FALSE
+  post_probs = FALSE,
+  combine_top = FALSE
 )
 }
 \arguments{
@@ -45,6 +46,17 @@ with two elements: \code{estimates} (the usual \code{besd_poststrat} tibble) and
 poststratified posterior draws for each row). The \code{post_probs} tibble
 respects the same \code{by} and \code{overall} grouping as \code{estimates}. Default
 \code{FALSE}.}
+
+\item{combine_top}{Logical. If \code{TRUE}, collapse the top-box levels
+(\code{toplevs} from the item dictionary) into a single combined response per
+item, mirroring \code{summary(x, combine_top = TRUE)}. For ordinal and
+categorical outcomes the posterior probability mass of the top-box
+categories is summed \strong{within each draw} before summarising, so credible
+intervals are correct for the combined quantity. Binary outcomes are
+already reported as their top-box label and are unaffected. Multichoice
+items are dropped, as they are by \code{\link[=summary.besd_data]{summary.besd_data()}}. Requires
+non-empty \code{toplevs} in the dictionary for every ordinal/categorical
+outcome. Default \code{FALSE}.}
 }
 \value{
 When \code{post_probs = FALSE} (default): a \code{besd_poststrat} tibble with
@@ -97,7 +109,9 @@ BeSD Explorer. Specifically:
 than \code{outcome} / \code{category}. Binary outcomes take the dictionary
 top-box label (identical to \code{summary(combine_top = TRUE)}), and
 multichoice sub-outcomes are folded back onto their parent \code{item_id}
-with one row per level;
+with one row per level. With \code{combine_top = TRUE}, ordinal and
+categorical items collapse to a single top-box row per item, labelled
+the same way;
 \item estimates are \code{pct} / \code{lcl} / \code{ucl} on the 0--100 scale;
 \item \code{n} is \code{NA} (poststratified estimates carry no survey sample size)
 and \code{estimator} is \code{"mrp"}.
