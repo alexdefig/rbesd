@@ -175,3 +175,22 @@
   }
   invisible(x)
 }
+
+# Poststratification (MrP) is Bayesian-only: a frequentist fit yields a single
+# point estimate per cell, so poststratified estimates would carry no
+# uncertainty at all. Rather than emit an interval-free table that looks
+# identical to a real MrP result, refuse up front.
+#' @keywords internal
+.assert_mrp_engine <- function(engine, context = "besd_poststratify()") {
+  if (!identical(engine, "frequentist")) return(invisible(TRUE))
+  .stopf(
+    paste0(
+      "%s requires a Bayesian model fit. The model was fitted with ",
+      "`engine = \"frequentist\"`, which yields a single point estimate per ",
+      "poststratification cell and so cannot propagate uncertainty: the ",
+      "resulting estimates would have no credible intervals. Refit with ",
+      "`besd_regress(..., engine = \"bayes\")`."
+    ),
+    context
+  )
+}

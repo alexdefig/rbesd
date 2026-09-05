@@ -569,6 +569,12 @@ print.besd_fit <- function(x, ...) {
 #' through downstream steps such as [besd_poststratify()]. For frequentist
 #' models, a single point-estimate prediction is returned.
 #'
+#' Poststratification (MrP) requires a Bayesian fit: passing a
+#' [besd_poststrat_frame()] as `newdata` for a frequentist model is an error,
+#' because the resulting estimates would carry no uncertainty. Frequentist
+#' fitted probabilities on the training data (`newdata = NULL`) remain
+#' available for diagnostics, for binary outcomes.
+#'
 #' @param fit A `besd_fit` or `besd_fit_by_country` object from
 #'   [besd_regress()].
 #' @param newdata `NULL` to predict on the training data, or a
@@ -595,7 +601,13 @@ besd_fitted_probs <- function(fit, newdata = NULL, n_sample = 50L) {
 
   .assert_besd_fit(fit)
 
-  if (!is.null(newdata)) .assert_besd_poststrat_frame(newdata)
+  if (!is.null(newdata)) {
+    .assert_besd_poststrat_frame(newdata)
+    # Predicting onto a poststrat frame is unambiguously MrP intent. Stop here
+    # rather than at besd_poststratify(), so the failure names the cause
+    # instead of surfacing as a missing predict method for the fitted class.
+    .assert_mrp_engine(fit$prep$engine, "besd_fitted_probs(newdata = <frame>)")
+  }
 
   prep     <- fit$prep
   engine   <- prep$engine
@@ -721,7 +733,10 @@ besd_fitted_probs <- function(fit, newdata = NULL, n_sample = 50L) {
                   categories = NULL))
     }
 
-    # Ordinal (clm / clmm): predict() returns list with $fit [n_obs x n_k]
+    # Ordinal: predict() returns a list with $fit [n_obs x n_k]. Only clm is
+    # reachable here -- ordinal::clmm has no predict method, but a multilevel
+    # ordinal fit can no longer reach this point: poststratification is
+    # Bayesian-only, and that is the sole caller that supplies newdata.
     .require_pkg("ordinal", "for ordinal fitted probabilities")
     pred_obj <- stats::predict(model, newdata = newdata, type = "prob")
     mat      <- if (is.list(pred_obj)) pred_obj$fit else as.matrix(pred_obj)

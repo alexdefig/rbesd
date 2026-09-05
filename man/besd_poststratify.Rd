@@ -27,8 +27,7 @@ to stratify estimates by (e.g. \code{"dem_gen"} to return separate
 poststratified estimates per gender within each country). Columns must
 be present in \code{poststrat_frame}.}
 
-\item{conf_level}{Numeric. Credible interval width for Bayesian models.
-Default \code{0.95}. Ignored for frequentist models.}
+\item{conf_level}{Numeric. Credible interval width. Default \code{0.95}.}
 
 \item{overall}{Logical. If \code{TRUE}, an additional set of national-level
 poststratified estimates is appended, pooling across all countries using
@@ -62,9 +61,8 @@ outcome. Default \code{FALSE}.}
 When \code{post_probs = FALSE} (default): a \code{besd_poststrat} tibble with
 columns \code{country}, any \code{by} variables (with human-readable labels),
 \code{item_id}, \code{item_type}, \code{response}, \code{n}, \code{pct}, \code{lcl}, \code{ucl}, \code{estimator}.
-\code{lcl} and \code{ucl} are \code{NA} for frequentist models. When \code{overall = TRUE},
-national rows are appended with the \code{country} column set to
-\code{overall_label}.
+When \code{overall = TRUE}, national rows are appended with the \code{country}
+column set to \code{overall_label}.
 
 When \code{post_probs = TRUE}: a named list with:
 \describe{
@@ -81,10 +79,16 @@ top-box categories before summarising.}
 \description{
 Applies population counts from a \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}} to fitted
 probabilities from \code{\link[=besd_fitted_probs]{besd_fitted_probs()}} to produce poststratified
-(population-representative) estimates. For Bayesian models, the full
-posterior distribution is propagated through the weighting step, yielding
-median estimates and credible intervals. For frequentist models, a single
-weighted point estimate is returned with no uncertainty quantification.
+(population-representative) estimates. The full posterior distribution is
+propagated through the weighting step, yielding median estimates and
+credible intervals.
+}
+\details{
+Poststratification requires a Bayesian fit. A frequentist model yields a
+single point estimate per poststratification cell, so the poststratified
+estimates would carry no uncertainty; rather than return an interval-free
+table that looks like a full MrP result, this function errors. Refit with
+\code{besd_regress(..., engine = "bayes")}.
 }
 \section{Sub-national use and context-predictor limitation}{
 

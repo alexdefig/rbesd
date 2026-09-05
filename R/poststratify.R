@@ -4,10 +4,15 @@
 #'
 #' Applies population counts from a [besd_poststrat_frame()] to fitted
 #' probabilities from [besd_fitted_probs()] to produce poststratified
-#' (population-representative) estimates. For Bayesian models, the full
-#' posterior distribution is propagated through the weighting step, yielding
-#' median estimates and credible intervals. For frequentist models, a single
-#' weighted point estimate is returned with no uncertainty quantification.
+#' (population-representative) estimates. The full posterior distribution is
+#' propagated through the weighting step, yielding median estimates and
+#' credible intervals.
+#'
+#' Poststratification requires a Bayesian fit. A frequentist model yields a
+#' single point estimate per poststratification cell, so the poststratified
+#' estimates would carry no uncertainty; rather than return an interval-free
+#' table that looks like a full MrP result, this function errors. Refit with
+#' `besd_regress(..., engine = "bayes")`.
 #'
 #' @param fitted A `besd_fitted` object from [besd_fitted_probs()].
 #' @param poststrat_frame A `besd_poststrat_frame` object from
@@ -17,8 +22,7 @@
 #'   to stratify estimates by (e.g. `"dem_gen"` to return separate
 #'   poststratified estimates per gender within each country). Columns must
 #'   be present in `poststrat_frame`.
-#' @param conf_level Numeric. Credible interval width for Bayesian models.
-#'   Default `0.95`. Ignored for frequentist models.
+#' @param conf_level Numeric. Credible interval width. Default `0.95`.
 #' @param overall Logical. If `TRUE`, an additional set of national-level
 #'   poststratified estimates is appended, pooling across all countries using
 #'   globally-normalised population weights. When `by` is also specified,
@@ -77,9 +81,8 @@
 #' @return When `post_probs = FALSE` (default): a `besd_poststrat` tibble with
 #'   columns `country`, any `by` variables (with human-readable labels),
 #'   `item_id`, `item_type`, `response`, `n`, `pct`, `lcl`, `ucl`, `estimator`.
-#'   `lcl` and `ucl` are `NA` for frequentist models. When `overall = TRUE`,
-#'   national rows are appended with the `country` column set to
-#'   `overall_label`.
+#'   When `overall = TRUE`, national rows are appended with the `country`
+#'   column set to `overall_label`.
 #'
 #'   When `post_probs = TRUE`: a named list with:
 #'   \describe{
@@ -103,6 +106,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   .assert_besd_fitted(fitted)
   .assert_besd_poststrat_frame(poststrat_frame)
   .assert_is_scalar_number(conf_level, "conf_level")
+  .assert_mrp_engine(fitted$meta$engine)
 
   if (!is.null(by)) {
     missing_by <- setdiff(by, names(poststrat_frame))
@@ -117,7 +121,6 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   country_col <- attr(poststrat_frame, "country_col")
   level_map   <- attr(poststrat_frame, "level_map")
   pop         <- poststrat_frame[[pop_col]]
-  engine      <- fitted$meta$engine
   outcomes    <- fitted$meta$outcomes
 
   # Per-outcome types. `meta$y_type` is only the first outcome's type; using it
@@ -152,7 +155,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
   # Country-level pass: group by country + by
   groups <- .ps_group_indices(poststrat_frame, c(country_col, by))
   result <- .ps_run_groups(groups, outcomes, fitted, pop, level_map,
-                           country_col, NULL, conf_level, engine, y_types,
+                           country_col, NULL, conf_level, y_types,
                            post_probs, item_meta, combine_top)
   rows      <- result$rows
   draw_rows <- result$draw_rows
@@ -162,7 +165,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
     national_groups <- .ps_group_indices(poststrat_frame, by)
     nat_result <- .ps_run_groups(national_groups, outcomes, fitted, pop,
                                  level_map, country_col, overall_label,
-                                 conf_level, engine, y_types, post_probs,
+                                 conf_level, y_types, post_probs,
                                  item_meta, combine_top)
     rows      <- c(rows, nat_result$rows)
     draw_rows <- c(draw_rows, nat_result$draw_rows)
@@ -322,7 +325,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 #   not once for the whole call: a single besd_regress() fit can mix binary and
 #   ordinal outcomes, whose draws have different dimensionality.
 .ps_run_groups <- function(groups, outcomes, fitted, pop, level_map,
-                           country_col, overall_label, conf_level, engine,
+                           country_col, overall_label, conf_level,
                            y_types, post_probs, item_meta, combine_top = FALSE) {
   rows      <- list()
   draw_rows <- list()
@@ -359,7 +362,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
       if (y_type == "binary") {
         ps_draws <- .ps_weighted_draws(draws_arr[, idx, drop = FALSE], w_c)
-        summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+        summ     <- .ps_summarise_draws(ps_draws, conf_level)
         rows[[length(rows) + 1L]] <- .ps_build_row(
           im, group_vals, im$response, summ$estimate, summ$lower, summ$upper
         )
@@ -374,7 +377,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
         # not additive.
         draws_k  <- .ps_collapse_cats(draws_arr, idx, k_top)
         ps_draws <- .ps_weighted_draws(draws_k, w_c)
-        summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+        summ     <- .ps_summarise_draws(ps_draws, conf_level)
         rows[[length(rows) + 1L]] <- .ps_build_row(
           im, group_vals, im$response, summ$estimate, summ$lower, summ$upper
         )
@@ -386,7 +389,7 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
         for (k in seq_along(cats)) {
           draws_k  <- .ps_collapse_cats(draws_arr, idx, k)
           ps_draws <- .ps_weighted_draws(draws_k, w_c)
-          summ     <- .ps_summarise_draws(ps_draws, conf_level, engine)
+          summ     <- .ps_summarise_draws(ps_draws, conf_level)
           rows[[length(rows) + 1L]] <- .ps_build_row(
             im, group_vals, cats[[k]], summ$estimate, summ$lower, summ$upper
           )
@@ -428,11 +431,9 @@ besd_poststratify <- function(fitted, poststrat_frame, by = NULL,
 
 
 # Summarise a vector of poststratified draws to a point estimate and interval.
-# For frequentist models the single draw is returned as the estimate directly.
-.ps_summarise_draws <- function(ps_draws, conf_level, engine) {
-  if (engine == "frequentist")
-    return(list(estimate = ps_draws[[1L]], lower = NA_real_, upper = NA_real_))
-
+# Callers are Bayesian-only (see .assert_mrp_engine), so a full posterior is
+# always available here.
+.ps_summarise_draws <- function(ps_draws, conf_level) {
   probs <- c((1 - conf_level) / 2, 1 - (1 - conf_level) / 2)
   list(
     estimate = stats::median(ps_draws),

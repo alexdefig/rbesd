@@ -1,5 +1,15 @@
 # rbesd (development version)
 
+## Breaking changes
+- Poststratification (MrP) now requires a Bayesian fit. `besd_poststratify()`,
+  and `besd_fitted_probs()` when given a `besd_poststrat_frame()` as `newdata`,
+  error for models fitted with `engine = "frequentist"`. A frequentist fit
+  yields a single point estimate per poststratification cell, so the
+  poststratified estimates carried no uncertainty at all (`lcl` / `ucl` were
+  `NA`) while otherwise being indistinguishable from a full MrP result. Refit
+  with `besd_regress(..., engine = "bayes")`. Frequentist fitted probabilities
+  on the training data (`newdata = NULL`) are unaffected.
+
 ## New features
 - `besd_poststratify()`: new `combine_top` argument, mirroring
   `summary(x, combine_top = TRUE)`. Ordinal and categorical outcomes collapse

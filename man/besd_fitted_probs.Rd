@@ -37,6 +37,13 @@ predicted probabilities are returned, enabling full uncertainty propagation
 through downstream steps such as \code{\link[=besd_poststratify]{besd_poststratify()}}. For frequentist
 models, a single point-estimate prediction is returned.
 }
+\details{
+Poststratification (MrP) requires a Bayesian fit: passing a
+\code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}} as \code{newdata} for a frequentist model is an error,
+because the resulting estimates would carry no uncertainty. Frequentist
+fitted probabilities on the training data (\code{newdata = NULL}) remain
+available for diagnostics, for binary outcomes.
+}
 \seealso{
 \code{\link[=besd_poststrat_frame]{besd_poststrat_frame()}}, \code{\link[=besd_poststratify]{besd_poststratify()}}
 }
