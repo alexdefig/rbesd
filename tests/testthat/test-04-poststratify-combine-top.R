@@ -84,22 +84,14 @@ test_that("predicting onto a poststrat frame is refused for frequentist fits", {
   )
 })
 
-test_that("frequentist fitted probabilities on training data still work", {
-  # newdata = NULL is diagnostics, not MrP, and stays available. Restricted to
-  # a binary outcome: the ordinal training-data path is separately broken (see
-  # `.fitted_probs_one()` -- predict.clm returns a vector, not the [n_obs x n_k]
-  # matrix, when the response column is present in newdata).
-  sim <- make_besd_sim(n_countries = 3, n_per_cell = 15)
-  x <- suppressWarnings(as_besd(sim$survey, dem_dict = dem_dictionary(),
-                                country_col = "country"))
-  fit <- suppressWarnings(suppressMessages(besd_regress(
-    x, outcome = "sp_peer", predictors = c("dem_gen", "dem_age"),
-    scope = "by_country", engine = "frequentist"
-  )))
+test_that("newdata is required: there is no training-data prediction path", {
+  expect_error(besd_fitted_probs(ps_fixture$fit), "`newdata` is required")
+  expect_error(besd_fitted_probs(ps_fixture$fit), "MrP pipeline")
+})
 
-  fp <- besd_fitted_probs(fit)
-  expect_s3_class(fp, "besd_fitted")
-  expect_true("sp_peer" %in% names(fp$draws))
+test_that("newdata must be a poststrat frame", {
+  expect_error(besd_fitted_probs(ps_fixture$fit, newdata = data.frame(a = 1)),
+               "besd_poststrat_frame")
 })
 
 # ── Per-outcome types ──────────────────────────────────────────────────────────

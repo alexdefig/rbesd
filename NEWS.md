@@ -7,8 +7,27 @@
   yields a single point estimate per poststratification cell, so the
   poststratified estimates carried no uncertainty at all (`lcl` / `ucl` were
   `NA`) while otherwise being indistinguishable from a full MrP result. Refit
-  with `besd_regress(..., engine = "bayes")`. Frequentist fitted probabilities
-  on the training data (`newdata = NULL`) are unaffected.
+  with `besd_regress(..., engine = "bayes")`.
+- `besd_fitted_probs()`: `newdata` is now required and must be a
+  `besd_poststrat_frame()`. The function is a step of the MrP pipeline, and
+  predicting on the training data (`newdata = NULL`) was not part of it. This
+  also removes a latent bug: the training-data path was the only one where the
+  response column reached `predict.clm()`, which then returned probabilities of
+  the observed category rather than the full category matrix, so frequentist
+  ordinal fits errored there.
+- `besd_fitted_probs()` no longer has a frequentist prediction branch. With
+  poststratification restricted to Bayesian fits and `newdata` required, it was
+  unreachable; removing it takes both remaining `stats::predict()` calls out of
+  the package. Prediction now goes exclusively through
+  `brms::posterior_epred()`, which also retires the `ordinal::clm` /
+  `ordinal::clmm` prediction issues (`ordinal` is still required for *fitting*
+  ordinal models).
+
+## Internal
+- `besd_fitted_probs()` and its helpers move from `R/regress.R` to a new
+  `R/poststratify-fitted.R`, so the three MrP steps sit in pipeline order
+  alongside `poststratify-prep.R` and `poststratify.R`. No behaviour change
+  beyond the above.
 
 ## New features
 - `besd_poststratify()`: new `combine_top` argument, mirroring
