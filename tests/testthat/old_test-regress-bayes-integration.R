@@ -8,7 +8,7 @@ test_that("Bayesian multilevel regression runs with brms + Laplace (opt-in)", {
 
   fit <- rbesd::besd_regress(
     x,
-    outcome = "sp_peer",
+    outcome = "so_peer",
     predictors = list(common = c("dem_gen"), context = c("dem_age")),
     scope = "multilevel",
     engine = "bayes",
@@ -21,5 +21,5 @@ test_that("Bayesian multilevel regression runs with brms + Laplace (opt-in)", {
 
   expect_s3_class(fit, "besd_fit")
   expect_equal(fit$meta$engine, "bayes")
-  expect_true(!is.null(fit$fits[["sp_peer"]]))
+  expect_true(!is.null(fit$fits[["so_peer"]]))
 })

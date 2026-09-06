@@ -63,12 +63,12 @@ The special name \code{.all} defines a cross-item default that is \emph{combined
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{missing_tokens = list(
   .all      = "Don't know",        # applied to every item
-  sp_peer   = c("Refused", "N/A"), # additionally for sp_peer only
+  so_peer   = c("Refused", "N/A"), # additionally for so_peer only
   tf_safety = "Not applicable"     # additionally for tf_safety only
 )
 }\if{html}{\out{</div>}}
 
-Here \code{sp_peer} treats \code{"Don't know"}, \code{"Refused"}, and \code{"N/A"} all as
+Here \code{so_peer} treats \code{"Don't know"}, \code{"Refused"}, and \code{"N/A"} all as
 missing; \code{tf_safety} treats \code{"Don't know"} and \code{"Not applicable"} as
 missing; all other items treat only \code{"Don't know"} as missing.
 }}
@@ -128,7 +128,7 @@ x <- as_besd(
   df,
   missing_tokens = list(
     .all      = "Don't know",          # every item
-    sp_peer   = c("Refused", "N/A"),   # sp_peer gets these too
+    so_peer   = c("Refused", "N/A"),   # so_peer gets these too
     tf_safety = "Not applicable"       # tf_safety gets this too
   ),
   missing_action = "na"

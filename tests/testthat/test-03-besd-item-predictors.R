@@ -79,7 +79,7 @@ test_that("besd_regress rejects self-prediction and multichoice predictors", {
   )
 
   raw <- make_multichoice_raw(n = 200)
-  raw$sp_peer <- sample(c("Yes", "No"), nrow(raw), replace = TRUE)
+  raw$so_peer <- sample(c("Yes", "No"), nrow(raw), replace = TRUE)
   xm <- suppressWarnings(rbesd::as_besd(
     raw,
     country_col = "country",
@@ -92,7 +92,7 @@ test_that("besd_regress rejects self-prediction and multichoice predictors", {
   ))
 
   expect_error(
-    rbesd::besd_regress(xm, outcome = "sp_peer",
+    rbesd::besd_regress(xm, outcome = "so_peer",
                         predictors = list(common = "pr_reasons_ease_access"),
                         scope = "multilevel", engine = "frequentist"),
     "Multichoice item"
@@ -107,7 +107,7 @@ test_that("tidy_model decodes an ordinal BeSD predictor end to end", {
   fit <- withCallingHandlers(
     rbesd::besd_regress(
       x,
-      outcome    = "sp_peer",
+      outcome    = "so_peer",
       predictors = list(common = "tf_safety", context = character(0)),
       scope      = "multilevel",
       engine     = "frequentist"

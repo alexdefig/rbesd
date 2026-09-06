@@ -9,7 +9,7 @@ make_dummy_besd_df <- function(n_countries = 6, n_per_country = 80, seed = 123) 
   dict_dem  <- rbesd::dem_dictionary()
 
   # Pull label levels from dictionaries
-  lv_peer <- dict_besd$levels[[match("sp_peer", dict_besd$item_id)]]
+  lv_peer <- dict_besd$levels[[match("so_peer", dict_besd$item_id)]]
   lv_safe <- dict_besd$levels[[match("tf_safety", dict_besd$item_id)]]
 
   lv_gen  <- dict_dem$levels[[match("dem_gen", dict_dem$item_id)]]
@@ -31,7 +31,7 @@ make_dummy_besd_df <- function(n_countries = 6, n_per_country = 80, seed = 123) 
 
   eta <- -0.2 + country_re + gen_eff + age_eff
   p <- 1 / (1 + exp(-eta))
-  sp_peer <- ifelse(stats::runif(n) < p, "Yes", "No")
+  so_peer <- ifelse(stats::runif(n) < p, "Yes", "No")
 
   # Ordinal outcome from a latent variable
   z <- 0.0 + country_re + 0.25 * (dem_gen == "Woman") + stats::rnorm(n)
@@ -47,7 +47,7 @@ make_dummy_besd_df <- function(n_countries = 6, n_per_country = 80, seed = 123) 
 
   data.frame(
     country = country,
-    sp_peer = sp_peer,
+    so_peer = so_peer,
     tf_safety = tf_safety,
     dem_gen = dem_gen,
     dem_age = dem_age,

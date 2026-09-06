@@ -58,7 +58,7 @@ Inspect a specific item's allowed levels:
 
 ```{r}
 besd_dict %>%
-  filter(item_id %in% c("tf_benefits", "sp_peer", "pr_reasons_ease_access")) %>%
+  filter(item_id %in% c("tf_benefits", "so_peer", "pr_reasons_ease_access")) %>%
   select(item_id, item_type, levels)
 ```
 
@@ -137,7 +137,7 @@ raw names to BeSD item IDs:
 mapping <- c(
   B1         = "tf_benefits",
   B2         = "tf_safety",
-  B5         = "sp_peer",
+  B5         = "so_peer",
   S3_RECODE  = "dem_age",
   S2         = "dem_gen",
   # multichoice: multiple source columns → one item ID
@@ -259,7 +259,7 @@ print(rl2 %>% arrange(country), n = Inf)
 smry <- summary(y)
 
 plot_besd_bars(
-  smry %>% filter(item_id %in% c("tf_benefits", "tf_safety", "sp_peer"))
+  smry %>% filter(item_id %in% c("tf_benefits", "tf_safety", "so_peer"))
 )
 ```
 
@@ -277,7 +277,7 @@ tb %>%
 ```{r, fig.width=7, fig.height=6}
 plot_besd_spider(
   smry,
-  item_ids = c("tf_benefits", "tf_safety", "sp_peer", "sp_family",
+  item_ids = c("tf_benefits", "tf_safety", "so_peer", "so_family",
                "pr_recall", "pr_know_where"),
   compare  = "all"
 )
@@ -304,7 +304,7 @@ Fits a separate logistic regression per country:
 ```{r}
 fit_bc <- besd_regress(
   y,
-  outcome    = "sp_peer",
+  outcome    = "so_peer",
   predictors = c("dem_gen", "dem_age"),
   scope      = "by_country",
   engine     = "frequentist"
@@ -329,7 +329,7 @@ when the within-country cell count falls below `min_n_context`):
 ```{r}
 fit_ml <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope         = "multilevel",
   engine        = "frequentist",
@@ -378,7 +378,7 @@ tidy_model(fit_mc) %>% print(n = 20)
 ### 5.5 Looping over multiple outcomes
 
 ```{r}
-outcomes <- c("sp_peer", "sp_family", "pr_recall")
+outcomes <- c("so_peer", "so_family", "pr_recall")
 
 fits <- lapply(outcomes, function(yy) {
   besd_regress(
@@ -403,7 +403,7 @@ Set `RBESD_RUN_BAYES_VIGNETTE=true` to evaluate.
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
 fit_bayes <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope         = "multilevel",
   engine        = "bayes",
@@ -425,7 +425,7 @@ td[, c("variable", "level", "country", "rhat", "ess")]
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
 fit_rs <- besd_regress(
   y,
-  outcome        = "sp_peer",
+  outcome        = "so_peer",
   predictors     = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope          = "multilevel",
   engine         = "bayes",
@@ -453,7 +453,7 @@ For large models, the `cmdstanr` backend is faster and supports within-chain par
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && requireNamespace("cmdstanr", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
 fit_cmd <- besd_regress(
   y,
-  outcome        = "sp_peer",
+  outcome        = "so_peer",
   predictors     = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope          = "multilevel",
   engine         = "bayes",
@@ -496,7 +496,7 @@ Context-specific predictors are not supported for MrP — use `common` predictor
 ```{r, eval = requireNamespace("brms", quietly = TRUE) && Sys.getenv("RBESD_RUN_BAYES_VIGNETTE") == "true"}
 fit_mrp <- besd_regress(
   y,
-  outcome        = "sp_peer",
+  outcome        = "so_peer",
   predictors     = list(common = c("dem_gen", "dem_age")),
   scope          = "multilevel",
   engine         = "bayes",

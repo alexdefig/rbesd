@@ -9,7 +9,7 @@ test_that("besd_regress forwards brms args and uses Laplace-friendly random effe
     {
       rbesd::besd_regress(
         x,
-        outcome = "sp_peer",
+        outcome = "so_peer",
         predictors = list(common = c("dem_gen"), context = c("dem_age")),
         scope = "multilevel",
         engine = "bayes",
@@ -42,7 +42,7 @@ test_that("besd_regress forwards brms args and uses Laplace-friendly random effe
   expect_true(grepl("\\|\\|", f_chr))
 
   # The stored fit is our dummy
-  expect_s3_class(fit$fits[["sp_peer"]], "dummy_fit")
+  expect_s3_class(fit$fits[["so_peer"]], "dummy_fit")
 })
 
 test_that("multichoice outcomes are expanded to multiple binary outcomes", {

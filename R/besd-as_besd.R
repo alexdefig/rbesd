@@ -31,11 +31,11 @@
 #'     ```r
 #'     missing_tokens = list(
 #'       .all      = "Don't know",        # applied to every item
-#'       sp_peer   = c("Refused", "N/A"), # additionally for sp_peer only
+#'       so_peer   = c("Refused", "N/A"), # additionally for so_peer only
 #'       tf_safety = "Not applicable"     # additionally for tf_safety only
 #'     )
 #'     ```
-#'     Here `sp_peer` treats `"Don't know"`, `"Refused"`, and `"N/A"` all as
+#'     Here `so_peer` treats `"Don't know"`, `"Refused"`, and `"N/A"` all as
 #'     missing; `tf_safety` treats `"Don't know"` and `"Not applicable"` as
 #'     missing; all other items treat only `"Don't know"` as missing.
 #' @param missing_action One of `"na"` (default; recode missing tokens to `NA`
@@ -83,7 +83,7 @@
 #'   df,
 #'   missing_tokens = list(
 #'     .all      = "Don't know",          # every item
-#'     sp_peer   = c("Refused", "N/A"),   # sp_peer gets these too
+#'     so_peer   = c("Refused", "N/A"),   # so_peer gets these too
 #'     tf_safety = "Not applicable"       # tf_safety gets this too
 #'   ),
 #'   missing_action = "na"

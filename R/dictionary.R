@@ -41,7 +41,7 @@ besd_dictionary <- function() {
       question_short = "Confidence in health workers"
     ),
     # Social Processes
-    sp_peer = list(
+    so_peer = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
@@ -50,7 +50,7 @@ besd_dictionary <- function() {
       question = "Do you think most parents you know get their children vaccinated?",
       question_short = "Peer norms"
     ),
-    sp_family = list(
+    so_family = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
@@ -62,7 +62,7 @@ besd_dictionary <- function() {
       ),
       question_short = "Family norms"
     ),
-    sp_religious = list(
+    so_religious = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
@@ -73,7 +73,7 @@ besd_dictionary <- function() {
       ),
       question_short = "Religious leader norms"
     ),
-    sp_community = list(
+    so_community = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
@@ -84,7 +84,7 @@ besd_dictionary <- function() {
       ),
       question_short = "Community leader norms"
     ),
-    sp_hcw_rec = list(
+    so_hcw_rec = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),
@@ -93,7 +93,7 @@ besd_dictionary <- function() {
       question = "Has a health worker recommended your child be vaccinated?",
       question_short = "Health worker recommendation"
     ),
-    sp_travel_autonomy = list(
+    so_travel_autonomy = list(
       domain = "social processes",
       item_type = "binary",
       levels = c("No", "Yes"),

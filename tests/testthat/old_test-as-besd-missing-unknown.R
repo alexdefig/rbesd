@@ -3,7 +3,7 @@ test_that("as_besd handles missing tokens and unknown values as configured", {
   df <- make_dummy_besd_df(n_countries = 3, n_per_country = 30)
 
   # Inject missing tokens and unknown values
-  df$sp_peer[1:5] <- "Don't know"
+  df$so_peer[1:5] <- "Don't know"
   df$dem_gen[6:8] <- "Prefer not to say"  # unknown to dictionary
 
   # unknown_action = "error" should stop on unknown
@@ -32,7 +32,7 @@ test_that("as_besd handles missing tokens and unknown values as configured", {
   )
 
   # missing tokens were turned into NA
-  expect_true(all(is.na(x$sp_peer[1:5])))
+  expect_true(all(is.na(x$so_peer[1:5])))
 
   # unknown dem_gen values become NA
   expect_true(all(is.na(x$dem_gen[6:8])))
@@ -46,6 +46,6 @@ test_that("as_besd handles missing tokens and unknown values as configured", {
     unknown_action = "na",
     warn_on_unknown = FALSE
   )
-  expect_true("Don't know" %in% levels(x2$sp_peer))
-  expect_equal(as.character(x2$sp_peer[1]), "Don't know")
+  expect_true("Don't know" %in% levels(x2$so_peer))
+  expect_equal(as.character(x2$so_peer[1]), "Don't know")
 })

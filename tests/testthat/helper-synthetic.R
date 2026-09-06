@@ -9,14 +9,14 @@
   list(
     gen  = dem$levels[[match("dem_gen",   dem$item_id)]],
     age  = dem$levels[[match("dem_age",   dem$item_id)]],
-    peer = besd$levels[[match("sp_peer",   besd$item_id)]],
+    peer = besd$levels[[match("so_peer",   besd$item_id)]],
     safe = besd$levels[[match("tf_safety", besd$item_id)]]
   )
 }
 
 # Simulate a multilevel BeSD survey plus the census frame it was drawn from.
 #
-# The binary outcome `sp_peer` follows a known logistic model with country
+# The binary outcome `so_peer` follows a known logistic model with country
 # random intercepts. Women are deliberately oversampled, so the raw survey
 # estimate is biased away from the population truth and MrP has something to
 # correct.
@@ -71,7 +71,7 @@ make_besd_sim <- function(n_countries = 12,
     psu     = paste0(cells$country[idx], "-", cells$dem_gen[idx]),
     wt      = 1 / unname(oversample[cells$dem_gen[idx]]),
     rid     = seq_len(n),
-    sp_peer = ifelse(stats::runif(n) < cells$p[idx], "Yes", "No"),
+    so_peer = ifelse(stats::runif(n) < cells$p[idx], "Yes", "No"),
     dem_gen = cells$dem_gen[idx],
     dem_age = cells$dem_age[idx],
     stringsAsFactors = FALSE

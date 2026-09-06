@@ -17,13 +17,13 @@ test_that("as_besd creates a valid besd_data object with expected attributes", {
   expect_equal(info$country_col, "country")
 
   # Columns were coerced to appropriate types
-  expect_true(is.factor(x$sp_peer))
-  expect_false(is.ordered(x$sp_peer))
+  expect_true(is.factor(x$so_peer))
+  expect_false(is.ordered(x$so_peer))
   expect_true(is.factor(x$tf_safety))
   expect_true(is.ordered(x$tf_safety))
 
   # Items registered
-  expect_true("sp_peer" %in% info$besd_items)
+  expect_true("so_peer" %in% info$besd_items)
   expect_true(all(c("dem_gen", "dem_age") %in% info$dem_items))
 
   # Object validates

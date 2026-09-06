@@ -40,8 +40,8 @@ test_that("mapping multiple raw columns to a non-multichoice item errors", {
   df <- make_dummy_multichoice_raw_df(n = 10)
 
   mapping <- c(
-    raw_reason_1 = "sp_peer",
-    raw_reason_2 = "sp_peer"
+    raw_reason_1 = "so_peer",
+    raw_reason_2 = "so_peer"
   )
 
   expect_error(

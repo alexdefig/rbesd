@@ -72,12 +72,12 @@ mapping <- c(
   B1  = "tf_benefits",
   B2  = "tf_safety",
   B4  = "tf_hcws",
-  B5  = "sp_peer",
-  B6  = "sp_family",
-  B7  = "sp_religious",
-  B3  = "sp_hcw_rec",
+  B5  = "so_peer",
+  B6  = "so_family",
+  B7  = "so_religious",
+  B3  = "so_hcw_rec",
   B9  = "pr_recall",
-  B10 = "sp_travel_autonomy",
+  B10 = "so_travel_autonomy",
   B11 = "pr_know_where",
   # multichoice: many source columns → one item ID
   setNames(rep("pr_reasons_ease_access", 12), paste0("A_B16_", 1:12)),
@@ -181,7 +181,7 @@ Fits a separate logistic regression per country:
 ```r
 fit_bc <- besd_regress(
   y,
-  outcome    = "sp_peer",
+  outcome    = "so_peer",
   predictors = c("dem_gen", "dem_age"),
   scope      = "by_country",
   engine     = "frequentist"
@@ -201,7 +201,7 @@ A single model with country as the random-effect grouping variable. `predictors`
 ```r
 fit_ml <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope         = "multilevel",
   engine        = "frequentist",
@@ -251,7 +251,7 @@ Requires `brms` and a configured Stan toolchain. First-time model compilation ta
 ```r
 fit_bayes <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope         = "multilevel",
   engine        = "bayes",
@@ -272,7 +272,7 @@ td[, c("variable", "level", "country", "rhat", "ess")]
 ```r
 fit_rs <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age"), context = "dem_eth"),
   scope         = "multilevel",
   engine        = "bayes",
@@ -298,7 +298,7 @@ fit_cmd <- besd_regress(
 ### Looping over multiple outcomes
 
 ```r
-outcomes <- c("sp_peer", "sp_family", "pr_recall")
+outcomes <- c("so_peer", "so_family", "pr_recall")
 
 fits <- lapply(outcomes, function(yy) {
   besd_regress(
@@ -339,7 +339,7 @@ MrP requires a model that generates cell-level predicted probabilities. Fit a Ba
 ```r
 fit <- besd_regress(
   y,
-  outcome       = "sp_peer",
+  outcome       = "so_peer",
   predictors    = list(common = c("dem_gen", "dem_age")),
   scope         = "multilevel",
   engine        = "bayes",

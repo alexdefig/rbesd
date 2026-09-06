@@ -9,11 +9,11 @@ test_that("besd_regress does not duplicate multilevel complete-case warnings", {
   dem_gen_full <- sample(c("Man", "Woman"), n, replace = TRUE)
   country_shift <- stats::setNames(c(-0.5, -0.1, 0.2, 0.5), countries)
   eta <- -0.2 + 0.6 * (dem_gen_full == "Woman") + country_shift[country]
-  sp_peer <- ifelse(stats::runif(n) < stats::plogis(eta), "Yes", "No")
+  so_peer <- ifelse(stats::runif(n) < stats::plogis(eta), "Yes", "No")
 
   df <- data.frame(
     country = country,
-    sp_peer = sp_peer,
+    so_peer = so_peer,
     dem_gen = dem_gen_full,
     stringsAsFactors = FALSE
   )
@@ -25,7 +25,7 @@ test_that("besd_regress does not duplicate multilevel complete-case warnings", {
   fit <- withCallingHandlers(
     rbesd::besd_regress(
       x,
-      outcome = "sp_peer",
+      outcome = "so_peer",
       predictors = list(common = "dem_gen"),
       scope = "multilevel",
       engine = "frequentist"

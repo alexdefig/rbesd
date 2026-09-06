@@ -16,16 +16,16 @@ test_that("as_besd() applies dictionary types and levels", {
 
   # Ordinal items become ordered factors; binary ones do not.
   expect_true(is.ordered(x$tf_safety))
-  expect_false(is.ordered(x$sp_peer))
-  expect_true(is.factor(x$sp_peer))
+  expect_false(is.ordered(x$so_peer))
+  expect_true(is.factor(x$so_peer))
 
   # Levels come from the dictionary, in dictionary order.
   expect_identical(levels(x$tf_safety), lv$safe)
-  expect_identical(levels(x$sp_peer),   lv$peer)
+  expect_identical(levels(x$so_peer),   lv$peer)
 
   # Items are registered and the object validates.
   info <- besd_info(x)
-  expect_setequal(info$besd_items, c("sp_peer", "tf_safety"))
+  expect_setequal(info$besd_items, c("so_peer", "tf_safety"))
   expect_setequal(info$dem_items,  c("dem_gen", "dem_age"))
   expect_true(besd_validate(x, strict = TRUE))
 })
@@ -79,25 +79,25 @@ test_that("as_besd() packs multiple raw columns into one multichoice item", {
 
 test_that("unknown values error or become NA per unknown_action", {
   bad <- sim$survey
-  bad$sp_peer[1:3] <- "Maybe"
+  bad$so_peer[1:3] <- "Maybe"
 
   expect_error(build(bad, unknown_action = "error"), "unknown value")
 
   x <- build(bad, unknown_action = "na")
-  expect_true(all(is.na(x$sp_peer[1:3])))
-  expect_false("Maybe" %in% levels(x$sp_peer))
+  expect_true(all(is.na(x$so_peer[1:3])))
+  expect_false("Maybe" %in% levels(x$so_peer))
 })
 
 
 test_that("missing tokens are kept as levels or NA'd per missing_action", {
   tok <- sim$survey
-  tok$sp_peer[1:4] <- "Prefer not to say"
+  tok$so_peer[1:4] <- "Prefer not to say"
 
   keep <- build(tok, missing_tokens = "Prefer not to say", missing_action = "keep")
-  expect_true("Prefer not to say" %in% levels(keep$sp_peer))
-  expect_false(any(is.na(keep$sp_peer[1:4])))
+  expect_true("Prefer not to say" %in% levels(keep$so_peer))
+  expect_false(any(is.na(keep$so_peer[1:4])))
 
   nad <- build(tok, missing_tokens = "Prefer not to say", missing_action = "na")
-  expect_false("Prefer not to say" %in% levels(nad$sp_peer))
-  expect_true(all(is.na(nad$sp_peer[1:4])))
+  expect_false("Prefer not to say" %in% levels(nad$so_peer))
+  expect_true(all(is.na(nad$so_peer[1:4])))
 })

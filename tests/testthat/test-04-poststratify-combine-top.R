@@ -14,7 +14,7 @@
   ))
   # A frequentist fit is fine here: it is only used to encode the frame.
   fit <- suppressWarnings(suppressMessages(besd_regress(
-    x, outcome = c("tf_safety", "sp_peer"),
+    x, outcome = c("tf_safety", "so_peer"),
     predictors = c("dem_gen", "dem_age"),
     scope = "by_country", engine = "frequentist"
   )))
@@ -35,15 +35,15 @@
 
   fitted <- structure(
     list(
-      draws = list(tf_safety = ord, sp_peer = bin),
+      draws = list(tf_safety = ord, so_peer = bin),
       meta  = list(
         engine     = "bayes",
         scope      = "by_country",
-        outcomes   = c("tf_safety", "sp_peer"),
+        outcomes   = c("tf_safety", "so_peer"),
         y_type     = "ordinal",   # first outcome only, as besd_fitted_probs sets it
-        y_types    = list(tf_safety = "ordinal", sp_peer = "binary"),
+        y_types    = list(tf_safety = "ordinal", so_peer = "binary"),
         n_sample   = n_draws,
-        categories = list(tf_safety = cats, sp_peer = NULL),
+        categories = list(tf_safety = cats, so_peer = NULL),
         besd_dict  = fit$prep$dict,
         dem_dict   = fit$prep$dem_dict,
         outcome_label_map  = list(),
@@ -101,8 +101,8 @@ test_that("mixed binary and ordinal outcomes are both poststratified", {
 
   # meta$y_type is only the first outcome's type; both must still appear.
   expect_equal(ps_fixture$fitted$meta$y_type, "ordinal")
-  expect_setequal(unique(ps$item_id), c("tf_safety", "sp_peer"))
-  expect_equal(unique(ps$item_type[ps$item_id == "sp_peer"]), "binary")
+  expect_setequal(unique(ps$item_id), c("tf_safety", "so_peer"))
+  expect_equal(unique(ps$item_type[ps$item_id == "so_peer"]), "binary")
   expect_true(all(ps$pct >= 0 & ps$pct <= 100))
   expect_true(all(is.finite(ps$lcl)) && all(is.finite(ps$ucl)))
 })
@@ -152,8 +152,8 @@ test_that("combine_top leaves binary outcomes unchanged", {
   ps_tb <- besd_poststratify(ps_fixture$fitted, ps_fixture$frame,
                              combine_top = TRUE)
 
-  a <- ps[ps$item_id == "sp_peer", c("country", "response", "pct", "lcl", "ucl")]
-  b <- ps_tb[ps_tb$item_id == "sp_peer", c("country", "response", "pct", "lcl", "ucl")]
+  a <- ps[ps$item_id == "so_peer", c("country", "response", "pct", "lcl", "ucl")]
+  b <- ps_tb[ps_tb$item_id == "so_peer", c("country", "response", "pct", "lcl", "ucl")]
   expect_equal(as.data.frame(a), as.data.frame(b))
 })
 

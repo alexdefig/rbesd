@@ -13,12 +13,12 @@ A data frame with 22 columns:
 \item{tf_safety}{Thinking & feeling (ordinal): confidence in vaccine safety.}
 \item{tf_hcws}{Thinking & feeling (ordinal): confidence in health workers.}
 
-\item{sp_peer}{Social processes (binary): peer norms.}
-\item{sp_family}{Social processes (binary): family norms.}
-\item{sp_religious}{Social processes (binary): religious leader norms.}
-\item{sp_community}{Social processes (binary): community leader norms.}
-\item{sp_hcw_rec}{Social processes (binary): health worker recommendation.}
-\item{sp_travel_autonomy}{Social processes (binary): mother's travel autonomy
+\item{so_peer}{Social processes (binary): peer norms.}
+\item{so_family}{Social processes (binary): family norms.}
+\item{so_religious}{Social processes (binary): religious leader norms.}
+\item{so_community}{Social processes (binary): community leader norms.}
+\item{so_hcw_rec}{Social processes (binary): health worker recommendation.}
+\item{so_travel_autonomy}{Social processes (binary): mother's travel autonomy
 (reverse-coded in dictionary).}
 
 \item{pr_recall}{Practical issues (binary): received recall.}
